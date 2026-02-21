@@ -1,0 +1,297 @@
+#!/bin/bash
+# ══════════════════════════════════════════════════════════════
+#  walter — Docker launcher for Claude Code with
+#  network isolation and credential-guard
+# ══════════════════════════════════════════════════════════════
+
+set -e
+
+IMAGE_NAME="walter"
+IMAGE_TAG="latest"
+
+PROJECT_DIR=""
+MEMORY_DIR=""
+EXTRA_DOMAINS=""
+SNOWFLAKE_KEY=""
+BQ_CREDENTIALS=""
+BUILD=false
+
+usage() {
+  cat << 'EOF'
+Usage: walter [options] [claude args...]
+
+Launches Claude Code inside a Docker container with:
+  - Network firewall (only api.anthropic.com allowed)
+  - Credential-guard plugin (blocks secrets in files)
+
+Options:
+  -d, --dir <path>         Project directory (default: current dir)
+  -m, --memory <path>      Memory tool directory to mount
+  -a, --allow <domains>    Extra domains to allow (comma-separated)
+  --snowflake-key <path>   Snowflake private key PEM file
+  --bq-credentials <path>  BigQuery service account JSON key file (override)
+  --build                  Rebuild Docker image
+  -h, --help               Show this help
+
+Auth: CLAUDE_CODE_OAUTH_TOKEN from walter .env
+
+Project credentials from <project>/.env:
+  ANTHROPIC_API_KEY        — enables Data Detective
+  SNOWFLAKE_*              — Snowflake read-only MCP
+  BQ_PROJECT, BQ_CREDENTIALS_PATH — BigQuery (Data Detective)
+  SF_*                     — Snowflake (Data Detective)
+
+Examples:
+  walter -d ./my-project                    # all from .env
+  walter -d ./my-project "Add auth module"  # with prompt
+  walter -d ./my-project -p "Fix bug #42"   # pass -p flag
+  walter -m ~/memory_tool --allow "pypi.org" -d ./project
+EOF
+  exit 1
+}
+
+CLAUDE_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--dir)       PROJECT_DIR="$2"; shift 2 ;;
+    -m|--memory)    MEMORY_DIR="$2"; shift 2 ;;
+    -a|--allow)     EXTRA_DOMAINS="$2"; shift 2 ;;
+    --snowflake-key) SNOWFLAKE_KEY="$2"; shift 2 ;;
+    --bq-credentials) BQ_CREDENTIALS="$2"; shift 2 ;;
+    --build)        BUILD=true; shift ;;
+    -h|--help)      usage ;;
+    *)              CLAUDE_ARGS+=("$1"); shift ;;
+  esac
+done
+
+PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
+PROJECT_DIR=$(cd "$PROJECT_DIR" && pwd)
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Build image if needed ────────────────────────────────────
+if [ "$BUILD" = true ] || ! docker image inspect "$IMAGE_NAME:$IMAGE_TAG" &>/dev/null; then
+  echo "Building Docker image..."
+  docker build -t "$IMAGE_NAME:$IMAGE_TAG" "$SCRIPT_DIR"
+  echo ""
+fi
+
+# ── Mounts ───────────────────────────────────────────────────
+MOUNTS=(
+  -v "$PROJECT_DIR:/workspace"
+)
+
+# Default memory tool: ~/memory_tool if exists
+MEMORY_DIR="${MEMORY_DIR:-$HOME/memory_tool}"
+if [ -n "$MEMORY_DIR" ] && [ -d "$MEMORY_DIR" ]; then
+  MEMORY_DIR=$(cd "$MEMORY_DIR" && pwd)
+  MOUNTS+=(-v "$MEMORY_DIR:/opt/memory_tool")
+fi
+
+# ── Mount host's Claude agents + settings ─────────────────────
+CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+
+if [ -d "$CLAUDE_HOME/agents" ]; then
+  MOUNTS+=(-v "$CLAUDE_HOME/agents:/opt/claude-home/.claude/agents:ro")
+fi
+
+if [ -f "$CLAUDE_HOME/settings.json" ]; then
+  MOUNTS+=(-v "$CLAUDE_HOME/settings.json:/tmp/host-settings.json:ro")
+fi
+
+# ── Auth (from walter .env) ───────────────────────────────────
+ENV_VARS=()
+
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  set -a
+  source "$SCRIPT_DIR/.env"
+  set +a
+fi
+
+if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+  ENV_VARS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
+  AUTH_METHOD="OAuth token ($SCRIPT_DIR/.env)"
+else
+  AUTH_METHOD="No token — add CLAUDE_CODE_OAUTH_TOKEN to $SCRIPT_DIR/.env"
+fi
+
+# ── Project .env (detective, BQ, SF credentials) ─────────────
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  source "$PROJECT_DIR/.env"
+  set +a
+fi
+
+# ── Snowflake (read-only MCP) ─────────────────────────────────
+SNOWFLAKE_ENABLED=false
+SNOWFLAKE_VARS=(SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_WAREHOUSE SNOWFLAKE_DATABASE SNOWFLAKE_ROLE)
+
+for var in "${SNOWFLAKE_VARS[@]}"; do
+  if [ -n "${!var}" ]; then
+    ENV_VARS+=(-e "$var=${!var}")
+  fi
+done
+
+if [ -n "$SNOWFLAKE_ACCOUNT" ] && [ -n "$SNOWFLAKE_KEY" ]; then
+  SNOWFLAKE_ENABLED=true
+  SNOWFLAKE_KEY=$(cd "$(dirname "$SNOWFLAKE_KEY")" && pwd)/$(basename "$SNOWFLAKE_KEY")
+  if [ ! -f "$SNOWFLAKE_KEY" ]; then
+    echo "ERROR: Snowflake key not found: $SNOWFLAKE_KEY"
+    exit 1
+  fi
+  MOUNTS+=(-v "$SNOWFLAKE_KEY:/opt/secrets/snowflake_key.pem:ro")
+  ENV_VARS+=(-e "SNOWFLAKE_PRIVATE_KEY_PATH=/opt/secrets/snowflake_key.pem")
+
+  # Add Snowflake domains to firewall allowlist
+  SF_DOMAIN="${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com"
+  if [ -n "$EXTRA_DOMAINS" ]; then
+    EXTRA_DOMAINS="$EXTRA_DOMAINS,$SF_DOMAIN"
+  else
+    EXTRA_DOMAINS="$SF_DOMAIN"
+  fi
+fi
+
+# ── Data Detective ────────────────────────────────────────────
+# Env vars already sourced from $PROJECT_DIR/.env in Auth section above.
+# Detective is enabled if any Anthropic auth is available.
+DETECTIVE_ENABLED=false
+
+if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+  DETECTIVE_ENABLED=true
+
+  # Pass API key if set (separate from OAuth token)
+  [ -n "$ANTHROPIC_API_KEY" ] && ENV_VARS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
+
+  # Pass detective tuning vars
+  DETECTIVE_TUNE_VARS=(DETECTIVE_MODEL DETECTIVE_MAX_ITER DETECTIVE_MAX_TOKENS)
+  for var in "${DETECTIVE_TUNE_VARS[@]}"; do
+    if [ -n "${!var}" ]; then
+      ENV_VARS+=(-e "$var=${!var}")
+    fi
+  done
+
+  # Pass BigQuery vars
+  BQ_VARS=(BQ_PROJECT BQ_CREDENTIALS_PATH)
+  for var in "${BQ_VARS[@]}"; do
+    if [ -n "${!var}" ]; then
+      ENV_VARS+=(-e "$var=${!var}")
+    fi
+  done
+
+  # Pass Snowflake vars (SF_* prefix for detective)
+  SF_VARS=(SF_ACCOUNT SF_USER SF_PASSWORD SF_PRIVATE_KEY_PATH SF_WAREHOUSE SF_DATABASE SF_SCHEMA SF_ROLE)
+  for var in "${SF_VARS[@]}"; do
+    if [ -n "${!var}" ]; then
+      ENV_VARS+=(-e "$var=${!var}")
+    fi
+  done
+
+  # Add BigQuery API domains if BQ is configured
+  if [ -n "$BQ_PROJECT" ]; then
+    BQ_DOMAINS="bigquery.googleapis.com,storage.googleapis.com"
+    if [ -n "$EXTRA_DOMAINS" ]; then
+      EXTRA_DOMAINS="$EXTRA_DOMAINS,$BQ_DOMAINS"
+    else
+      EXTRA_DOMAINS="$BQ_DOMAINS"
+    fi
+  fi
+
+  # Auto-discover BQ credentials from project if not explicitly provided
+  if [ -z "$BQ_CREDENTIALS" ] && [ -n "$BQ_CREDENTIALS_PATH" ]; then
+    # If path from .env is relative, resolve against project dir
+    if [[ "$BQ_CREDENTIALS_PATH" != /* ]]; then
+      candidate="$PROJECT_DIR/$BQ_CREDENTIALS_PATH"
+    else
+      candidate="$BQ_CREDENTIALS_PATH"
+    fi
+    [ -f "$candidate" ] && BQ_CREDENTIALS="$candidate"
+  fi
+
+  # Auto-discover SF private key from project if path is relative
+  if [ -n "$SF_PRIVATE_KEY_PATH" ] && [[ "$SF_PRIVATE_KEY_PATH" != /* ]]; then
+    candidate="$PROJECT_DIR/$SF_PRIVATE_KEY_PATH"
+    if [ -f "$candidate" ]; then
+      SF_PRIVATE_KEY_PATH=$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")
+      MOUNTS+=(-v "$SF_PRIVATE_KEY_PATH:/opt/secrets/sf_key.pem:ro")
+      ENV_VARS+=(-e "SF_PRIVATE_KEY_PATH=/opt/secrets/sf_key.pem")
+    fi
+  fi
+fi
+
+# Mount BigQuery credentials file if provided (explicit or auto-discovered)
+if [ -n "$BQ_CREDENTIALS" ]; then
+  BQ_CREDENTIALS=$(cd "$(dirname "$BQ_CREDENTIALS")" && pwd)/$(basename "$BQ_CREDENTIALS")
+  if [ ! -f "$BQ_CREDENTIALS" ]; then
+    echo "ERROR: BigQuery credentials not found: $BQ_CREDENTIALS"
+    exit 1
+  fi
+  MOUNTS+=(-v "$BQ_CREDENTIALS:/opt/secrets/bq-credentials.json:ro")
+  ENV_VARS+=(-e "BQ_CREDENTIALS_PATH=/opt/secrets/bq-credentials.json")
+fi
+
+# ── Plannotator port ──────────────────────────────────────────
+PLANNOTATOR_PORT="${PLANNOTATOR_PORT:-19432}"
+ENV_VARS+=(-e "PLANNOTATOR_PORT=$PLANNOTATOR_PORT")
+
+# ── Entrypoint args (network-lock allowlist) ─────────────────
+ENTRYPOINT_ARGS=()
+[ -n "$EXTRA_DOMAINS" ] && ENTRYPOINT_ARGS+=(--allowlist "$EXTRA_DOMAINS")
+
+# ── Banner ───────────────────────────────────────────────────
+echo "══════════════════════════════════════════════════════"
+echo "  walter (Docker + Network Lock)"
+echo ""
+echo "  Project:     $PROJECT_DIR"
+echo "  Memory:      ${MEMORY_DIR:-not mounted}"
+echo "  Auth:        $AUTH_METHOD"
+echo ""
+echo "  Network:"
+echo "     api.anthropic.com, console.anthropic.com, claude.ai"
+[ -n "$EXTRA_DOMAINS" ] && echo "     $EXTRA_DOMAINS"
+echo "     everything else blocked (IPv4 + IPv6)"
+echo ""
+echo "  Agents:    $([ -d "$CLAUDE_HOME/agents" ] && echo "mounted from $CLAUDE_HOME/agents" || echo "not found")"
+echo "  Settings:  $([ -f "$CLAUDE_HOME/settings.json" ] && echo "merged from host" || echo "container defaults")"
+echo ""
+echo "  Plan Review: http://localhost:$PLANNOTATOR_PORT (when active)"
+echo ""
+if [ "$SNOWFLAKE_ENABLED" = true ]; then
+echo "  Snowflake:"
+echo "     MCP: snowflake-readonly (read-only)"
+echo "     Account: $SNOWFLAKE_ACCOUNT"
+echo "     Key: $SNOWFLAKE_KEY"
+echo ""
+fi
+if [ "$DETECTIVE_ENABLED" = true ]; then
+echo "  Data Detective:"
+echo "     MCP: data-detective (autonomous investigation)"
+echo "     Config: $PROJECT_DIR/.env"
+[ -n "$BQ_PROJECT" ] && echo "     BigQuery: $BQ_PROJECT"
+[ -n "$BQ_CREDENTIALS" ] && echo "     BQ Creds: $BQ_CREDENTIALS"
+[ -n "$SF_ACCOUNT" ] && echo "     Snowflake: $SF_ACCOUNT"
+echo ""
+fi
+echo "  Security:"
+echo "     iptables + ip6tables firewall"
+echo "     credential-guard hooks"
+echo "     no-new-privileges"
+echo "══════════════════════════════════════════════════════"
+echo ""
+
+# ── Interactive flag ─────────────────────────────────────────
+INTERACTIVE_FLAG="-it"
+[ -t 0 ] || INTERACTIVE_FLAG="-i"
+
+# ── Run ──────────────────────────────────────────────────────
+docker run --rm $INTERACTIVE_FLAG \
+  --name "walter-$(date +%s)" \
+  --cap-add NET_ADMIN \
+  "${MOUNTS[@]}" \
+  "${ENV_VARS[@]}" \
+  --tmpfs /tmp:exec \
+  -p "${PLANNOTATOR_PORT}:${PLANNOTATOR_PORT}" \
+  --security-opt no-new-privileges \
+  "$IMAGE_NAME:$IMAGE_TAG" \
+  "${ENTRYPOINT_ARGS[@]}" \
+  "${CLAUDE_ARGS[@]}"

@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/credential-guard.sh write",
+            "statusMessage": "Scanning for credentials..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/credential-guard.sh edit",
+            "statusMessage": "Scanning for credentials..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/credential-guard.sh bash",
+            "statusMessage": "Scanning for credentials..."
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/plannotator/hook.sh",
+            "timeout": 345600
+          }
+        ]
+      }
+    ]
+  }
+}

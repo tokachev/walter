@@ -1,0 +1,12 @@
+.env
+*.pem
+*.json.key
+node_modules/
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/research/
+.claude/plans/
+.claude/completed/
+.claude/agent-memory/
+.claude/projects/

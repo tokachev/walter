@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan Review</title>
+<style>
+/* ================================================================
+   CSS — Dark theme plan review UI
+   ================================================================ */
+
+:root {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --bg-card-hover: #1c2129;
+  --border: #30363d;
+  --border-subtle: #21262d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-dim: #484f58;
+  --accent: #58a6ff;
+  --green: #238636;
+  --green-text: #3fb950;
+  --green-bg: rgba(35, 134, 54, 0.15);
+  --red: #da3633;
+  --red-text: #f85149;
+  --red-bg: rgba(218, 54, 51, 0.1);
+  --yellow: #d29922;
+  --yellow-bg: rgba(210, 153, 34, 0.15);
+  --mark-delete: rgba(248, 81, 73, 0.2);
+  --mark-comment: rgba(210, 153, 34, 0.2);
+  --code-bg: #0d1117;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ---- Layout ---- */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.header {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(22, 27, 34, 0.8);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.badge.empty { background: var(--border); color: var(--text-muted); }
+
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ---- Viewer ---- */
+.viewer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 48px;
+  min-width: 0;
+}
+
+.viewer-inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+/* ---- Block wrapper with line numbers ---- */
+.block {
+  position: relative;
+  padding-left: 48px;
+  margin-bottom: 4px;
+}
+
+.block .line-num {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 36px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  user-select: none;
+  line-height: 1.6;
+  padding-top: 2px;
+}
+
+/* ---- Markdown elements ---- */
+.block h1 { font-size: 28px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.block h2 { font-size: 22px; font-weight: 600; margin: 20px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border-subtle); }
+.block h3 { font-size: 18px; font-weight: 600; margin: 16px 0 8px; }
+.block h4 { font-size: 16px; font-weight: 600; margin: 12px 0 6px; }
+.block h5 { font-size: 14px; font-weight: 600; margin: 10px 0 4px; }
+.block h6 { font-size: 14px; font-weight: 500; margin: 10px 0 4px; color: var(--text-muted); }
+
+.block p { margin: 4px 0; }
+
+.block pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.block code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.block p code, .block li code, .block blockquote code {
+  background: rgba(110, 118, 129, 0.2);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.88em;
+}
+
+.block blockquote {
+  border-left: 3px solid var(--border);
+  padding: 4px 16px;
+  margin: 8px 0;
+  color: var(--text-muted);
+}
+
+.block ul, .block ol { padding-left: 24px; margin: 2px 0; }
+.block li { margin: 2px 0; }
+.block li.checkbox { list-style: none; margin-left: -24px; padding-left: 4px; }
+.block li.checkbox input[type="checkbox"] { margin-right: 6px; }
+
+.block hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
+.block table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+.block th, .block td {
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 13px;
+}
+.block th { background: var(--bg-card); font-weight: 600; }
+
+.block a { color: var(--accent); text-decoration: none; }
+.block a:hover { text-decoration: underline; }
+.block strong { font-weight: 600; }
+.block em { font-style: italic; }
+
+/* ---- Code language badge ---- */
+.code-lang {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  padding: 1px 8px;
+  border-radius: 0 0 4px 4px;
+  border: 1px solid var(--border);
+  border-top: none;
+  margin-bottom: -1px;
+  position: relative;
+  top: -8px;
+  margin-left: 8px;
+  font-family: var(--font-mono);
+}
+
+/* ---- Annotation highlights ---- */
+mark.ann-delete {
+  background: var(--mark-delete);
+  border-bottom: 2px solid var(--red-text);
+  text-decoration: line-through;
+  text-decoration-color: var(--red-text);
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+mark.ann-comment {
+  background: var(--mark-comment);
+  border-bottom: 2px solid var(--yellow);
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+mark.ann-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- Floating toolbar ---- */
+.float-toolbar {
+  position: fixed;
+  display: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  gap: 4px;
+  flex-direction: row;
+}
+
+.float-toolbar.visible { display: flex; }
+
+.float-toolbar button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.float-toolbar button:hover { background: rgba(255,255,255,0.08); }
+.float-toolbar button.delete-btn { color: var(--red-text); }
+.float-toolbar button.delete-btn:hover { background: var(--red-bg); }
+.float-toolbar button.comment-btn { color: var(--yellow); }
+.float-toolbar button.comment-btn:hover { background: var(--yellow-bg); }
+
+/* ---- Annotation Panel ---- */
+.panel {
+  width: 320px;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.panel.collapsed { width: 0; border: none; }
+
+.panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.panel-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ann-card {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ann-card:hover { border-color: var(--border); background: var(--bg-card-hover); }
+.ann-card.selected { border-color: var(--accent); }
+
+.ann-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.ann-type {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.ann-type.deletion { color: var(--red-text); background: var(--red-bg); }
+.ann-type.comment { color: var(--yellow); background: var(--yellow-bg); }
+
+.ann-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+.ann-delete-btn:hover { color: var(--red-text); background: var(--red-bg); }
+
+.ann-original {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  max-height: 60px;
+}
+
+.ann-comment-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  resize: vertical;
+  min-height: 32px;
+}
+.ann-comment-input:focus { outline: none; border-color: var(--accent); }
+
+/* ---- Buttons ---- */
+.btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-approve {
+  background: var(--green);
+  color: #fff;
+}
+.btn-approve:hover:not(:disabled) { opacity: 0.9; }
+
+.btn-feedback {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+.btn-feedback:hover:not(:disabled) { background: rgba(88, 166, 255, 0.2); }
+
+.btn-toggle {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.btn-toggle:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+.btn-toggle.active { color: var(--accent); background: rgba(88, 166, 255, 0.1); }
+
+/* ---- Loading & Overlay ---- */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 10px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.overlay.visible { opacity: 1; }
+
+.overlay-box {
+  text-align: center;
+  padding: 40px;
+}
+
+.overlay-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.overlay-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.overlay-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ---- Confirm dialog ---- */
+.dialog-backdrop {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+
+.dialog h3 { font-size: 16px; margin-bottom: 8px; }
+.dialog p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-actions .btn { padding: 8px 16px; }
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .viewer { padding: 16px; }
+  .panel { position: fixed; right: 0; top: 48px; bottom: 0; z-index: 30; width: 280px; }
+  .panel.collapsed { display: none; }
+  .block { padding-left: 32px; }
+  .block .line-num { width: 24px; font-size: 11px; }
+}
+</style>
+</head>
+<body>
+
+<div id="app" class="app">
+  <div class="loading" id="loading">
+    <span class="spinner"></span>
+    Loading plan...
+  </div>
+</div>
+
+<div class="float-toolbar" id="floatToolbar">
+  <button class="delete-btn" id="tbDelete" title="Mark for deletion">Delete</button>
+  <button class="comment-btn" id="tbComment" title="Add comment">Comment</button>
+</div>
+
+<script>
+// ================================================================
+//  Plan Review UI — Vanilla JavaScript
+// ================================================================
+(function() {
+  'use strict';
+
+  // ---- State ----
+  let plan = '';
+  let permissionMode = 'default';
+  let blocks = [];
+  let annotations = [];
+  let selectedAnnotationId = null;
+  let isSubmitting = false;
+  let submitted = null;
+  let panelOpen = true;
+  let pendingSelection = null; // { text, blockId, range }
+
+  // ---- DOM refs ----
+  const app = document.getElementById('app');
+  const loadingEl = document.getElementById('loading');
+  const floatToolbar = document.getElementById('floatToolbar');
+  const tbDelete = document.getElementById('tbDelete');
+  const tbComment = document.getElementById('tbComment');
+
+  // ==================================================================
+  //  Markdown Parser — converts markdown string to Block array
+  //  Matches plannotator's parser.ts logic
+  // ==================================================================
+  function parseMarkdownToBlocks(markdown) {
+    const lines = markdown.split('\n');
+    const result = [];
+    let currentId = 0;
+    let buffer = [];
+    let currentType = 'paragraph';
+    let bufferStartLine = 1;
+
+    function flush() {
+      if (buffer.length > 0) {
+        const content = buffer.join('\n');
+        result.push({
+          id: 'block-' + (currentId++),
+          type: currentType,
+          content: content,
+          level: 0,
+          startLine: bufferStartLine,
+        });
+        buffer = [];
+      }
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      const lineNum = i + 1;
+
+      // Headings
+      if (/^#{1,6}\s/.test(trimmed)) {
+        flush();
+        const match = trimmed.match(/^(#{1,6})\s+(.*)/);
+        const level = match[1].length;
+        const content = match[2];
+        result.push({
+          id: 'block-' + (currentId++),
+          type: 'heading',
+          content: content,
+          level: level,
+          startLine: lineNum,
+        });
+        continue;
+      }
+
+      // HR
+      if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+        flush();
+        result.push({
+          id: 'block-' + (currentId++),
+          type: 'hr',
+          content: '',
+          startLine: lineNum,
+        });
+        continue;
+      }
+
+      // List items
+      if (/^(\*|-|\d+\.)\s/.test(trimmed)) {
+        flush();
+        const leadingWs = (line.match(/^(\s*)/) || ['',''])[1];
+        const spaceCount = leadingWs.replace(/\t/g, '  ').length;
+        const listLevel = Math.floor(spaceCount / 2);
+        let content = trimmed.replace(/^(\*|-|\d+\.)\s/, '');
+        let checked = undefined;
+        const cbMatch = content.match(/^\[([ xX])\]\s*/);
+        if (cbMatch) {
+          checked = cbMatch[1].toLowerCase() === 'x';
+          content = content.replace(/^\[([ xX])\]\s*/, '');
+        }
+        result.push({
+          id: 'block-' + (currentId++),
+          type: 'list-item',
+          content: content,
+          level: listLevel,
+          checked: checked,
+          startLine: lineNum,
+        });
+        continue;
+      }
+
+      // Blockquote
+      if (trimmed.startsWith('>')) {
+        flush();
+        result.push({
+          id: 'block-' + (currentId++),
+          type: 'blockquote',
+          content: trimmed.replace(/^>\s*/, ''),
+          startLine: lineNum,
+        });
+        continue;
+      }
+
+      // Code block
+      if (trimmed.startsWith('```')) {
+        flush();
+        const codeStartLine = lineNum;
+        const language = trimmed.slice(3).trim() || undefined;
+        const codeContent = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeContent.push(lines[i]);
+          i++;
+        }
+        result.push({
+          id: 'block-' + (currentId++),
+          type: 'code',
+          content: codeContent.join('\n'),
+          language: language,
+          startLine: codeStartLine,
+        });
+        continue;
+      }
+
+      // Table
+      if (trimmed.startsWith('|') || (trimmed.includes('|') && /^\|?.+\|.+\|?$/.test(trimmed))) {
+        flush();
+        const tableStartLine = lineNum;
+        const tableLines = [line];
+        while (i + 1 < lines.length) {
+          const nextTrimmed = lines[i + 1].trim();
+          if (nextTrimmed.startsWith('|') || (nextTrimmed.includes('|') && /^\|?.+\|.+\|?$/.test(nextTrimmed))) {
+            i++;
+            tableLines.push(lines[i]);
+          } else {
+            break;
+          }
+        }
+        result.push({
+          id: 'block-' + (currentId++),
+          type: 'table',
+          content: tableLines.join('\n'),
+          startLine: tableStartLine,
+        });
+        continue;
+      }
+
+      // Empty line
+      if (trimmed === '') {
+        flush();
+        currentType = 'paragraph';
+        continue;
+      }
+
+      // Accumulate paragraph
+      if (buffer.length === 0) bufferStartLine = lineNum;
+      buffer.push(line);
+    }
+
+    flush();
+    return result;
+  }
+
+  // ==================================================================
+  //  Inline Formatting — converts markdown inline syntax to HTML
+  // ==================================================================
+  function formatInline(text) {
+    // Escape HTML
+    let s = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Inline code (must be first to avoid other transforms inside code)
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bold
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+    // Italic
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    s = s.replace(/_(.+?)_/g, '<em>$1</em>');
+
+    // Links
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    return s;
+  }
+
+  // ==================================================================
+  //  Render Blocks to HTML
+  // ==================================================================
+  function renderBlocks(blocks) {
+    let html = '';
+
+    for (const block of blocks) {
+      const ln = block.startLine;
+      const bid = block.id;
+
+      switch (block.type) {
+        case 'heading': {
+          const tag = 'h' + Math.min(block.level || 1, 6);
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}">
+            <span class="line-num">${ln}</span>
+            <${tag}>${formatInline(block.content)}</${tag}>
+          </div>`;
+          break;
+        }
+        case 'paragraph': {
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}">
+            <span class="line-num">${ln}</span>
+            <p>${formatInline(block.content)}</p>
+          </div>`;
+          break;
+        }
+        case 'code': {
+          const langBadge = block.language
+            ? `<span class="code-lang">${escHtml(block.language)}</span>`
+            : '';
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}">
+            <span class="line-num">${ln}</span>
+            ${langBadge}
+            <pre><code>${escHtml(block.content)}</code></pre>
+          </div>`;
+          break;
+        }
+        case 'blockquote': {
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}">
+            <span class="line-num">${ln}</span>
+            <blockquote>${formatInline(block.content)}</blockquote>
+          </div>`;
+          break;
+        }
+        case 'list-item': {
+          const indent = (block.level || 0) * 20;
+          let itemContent = formatInline(block.content);
+          if (block.checked !== undefined) {
+            const chk = block.checked ? 'checked disabled' : 'disabled';
+            itemContent = `<input type="checkbox" ${chk}> ${itemContent}`;
+          }
+          const bullet = block.checked !== undefined ? '' : '&#8226; ';
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}" style="padding-left:${48 + indent}px">
+            <span class="line-num">${ln}</span>
+            <div>${block.checked === undefined ? bullet : ''}${itemContent}</div>
+          </div>`;
+          break;
+        }
+        case 'hr': {
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}">
+            <span class="line-num">${ln}</span>
+            <hr>
+          </div>`;
+          break;
+        }
+        case 'table': {
+          html += `<div class="block" data-block-id="${bid}" data-start-line="${ln}">
+            <span class="line-num">${ln}</span>
+            ${renderTable(block.content)}
+          </div>`;
+          break;
+        }
+      }
+    }
+
+    return html;
+  }
+
+  function renderTable(content) {
+    const lines = content.split('\n').filter(l => l.trim());
+    if (lines.length === 0) return '';
+
+    const parseRow = (line) =>
+      line.split('|').map(c => c.trim()).filter((c, i, arr) => i > 0 || c !== '');
+
+    // Remove trailing empty cells from pipe at end
+    const cleanRow = (cells) => {
+      if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+      return cells;
+    };
+
+    let html = '<table>';
+    for (let i = 0; i < lines.length; i++) {
+      const cells = cleanRow(parseRow(lines[i]));
+      // Skip separator rows (---|---|---)
+      if (cells.every(c => /^[-:]+$/.test(c))) continue;
+      const tag = i === 0 ? 'th' : 'td';
+      html += '<tr>';
+      for (const cell of cells) {
+        html += `<${tag}>${formatInline(cell)}</${tag}>`;
+      }
+      html += '</tr>';
+    }
+    html += '</table>';
+    return html;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ==================================================================
+  //  Export Diff — matches plannotator's exportDiff() format
+  // ==================================================================
+  function exportDiff() {
+    if (annotations.length === 0) return 'No changes detected.';
+
+    let output = '# Plan Feedback\n\n';
+    output += `I've reviewed this plan and have ${annotations.length} piece${annotations.length !== 1 ? 's' : ''} of feedback:\n\n`;
+
+    const sorted = [...annotations].sort((a, b) => {
+      const ai = blocks.findIndex(bl => bl.id === a.blockId);
+      const bi = blocks.findIndex(bl => bl.id === b.blockId);
+      if (ai !== bi) return ai - bi;
+      return a.createdAt - b.createdAt;
+    });
+
+    sorted.forEach((ann, index) => {
+      output += `## ${index + 1}. `;
+      switch (ann.type) {
+        case 'DELETION':
+          output += 'Remove this\n';
+          output += '```\n' + ann.originalText + '\n```\n';
+          output += '> I don\'t want this in the plan.\n';
+          break;
+        case 'COMMENT':
+          output += `Feedback on: "${ann.originalText}"\n`;
+          output += `> ${ann.text || '(no comment)'}\n`;
+          break;
+      }
+      output += '\n';
+    });
+
+    output += '---\n';
+    return output;
+  }
+
+  // ==================================================================
+  //  Annotation Management
+  // ==================================================================
+  function addAnnotation(type, originalText, blockId) {
+    const ann = {
+      id: 'ann-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6),
+      type: type,
+      originalText: originalText,
+      blockId: blockId,
+      text: '',
+      createdAt: Date.now(),
+    };
+    annotations.push(ann);
+    selectedAnnotationId = ann.id;
+    renderAnnotations();
+    renderHighlights();
+    updateBadge();
+    return ann;
+  }
+
+  function deleteAnnotation(id) {
+    annotations = annotations.filter(a => a.id !== id);
+    if (selectedAnnotationId === id) selectedAnnotationId = null;
+    renderAnnotations();
+    renderHighlights();
+    updateBadge();
+  }
+
+  function updateAnnotationText(id, text) {
+    const ann = annotations.find(a => a.id === id);
+    if (ann) ann.text = text;
+  }
+
+  function updateBadge() {
+    const badge = document.getElementById('annBadge');
+    if (badge) {
+      badge.textContent = annotations.length;
+      badge.className = 'badge' + (annotations.length === 0 ? ' empty' : '');
+    }
+  }
+
+  // ==================================================================
+  //  Highlight annotations in the viewer
+  // ==================================================================
+  function renderHighlights() {
+    // Re-render blocks to clear marks, then re-apply
+    const viewerInner = document.getElementById('viewerInner');
+    if (!viewerInner) return;
+
+    // Re-render into the inner wrapper to preserve max-width constraint
+    viewerInner.innerHTML = renderBlocks(blocks);
+
+    const viewer = viewerInner;
+
+    // Apply highlights
+    annotations.forEach(ann => {
+      const blockEl = viewer.querySelector(`[data-block-id="${ann.blockId}"]`);
+      if (!blockEl) return;
+
+      // Find text in block and wrap with mark
+      const walker = document.createTreeWalker(blockEl, NodeFilter.SHOW_TEXT, null);
+      let node;
+      let found = false;
+      while ((node = walker.nextNode()) && !found) {
+        const idx = node.textContent.indexOf(ann.originalText);
+        if (idx >= 0) {
+          const range = document.createRange();
+          range.setStart(node, idx);
+          range.setEnd(node, idx + ann.originalText.length);
+          const mark = document.createElement('mark');
+          mark.className = ann.type === 'DELETION' ? 'ann-delete' : 'ann-comment';
+          mark.dataset.annId = ann.id;
+          if (ann.id === selectedAnnotationId) mark.classList.add('ann-selected');
+          range.surroundContents(mark);
+          found = true;
+        }
+      }
+    });
+  }
+
+  // ==================================================================
+  //  Annotation Panel
+  // ==================================================================
+  function renderAnnotations() {
+    const body = document.getElementById('panelBody');
+    if (!body) return;
+
+    if (annotations.length === 0) {
+      body.innerHTML = '<div class="panel-empty">Select text in the plan to add annotations.<br><br>Use <strong>Delete</strong> to mark sections for removal, or <strong>Comment</strong> to leave feedback.</div>';
+      return;
+    }
+
+    let html = '';
+    annotations.forEach(ann => {
+      const typeLabel = ann.type === 'DELETION' ? 'Delete' : 'Comment';
+      const typeClass = ann.type === 'DELETION' ? 'deletion' : 'comment';
+      const isSelected = ann.id === selectedAnnotationId;
+      const truncated = ann.originalText.length > 120
+        ? ann.originalText.substring(0, 120) + '...'
+        : ann.originalText;
+
+      html += `<div class="ann-card${isSelected ? ' selected' : ''}" data-ann-id="${ann.id}" onclick="window._selectAnn('${ann.id}')">
+        <div class="ann-card-header">
+          <span class="ann-type ${typeClass}">${typeLabel}</span>
+          <button class="ann-delete-btn" onclick="event.stopPropagation(); window._deleteAnn('${ann.id}')" title="Delete annotation">&#10005;</button>
+        </div>
+        <div class="ann-original">${escHtml(truncated)}</div>
+        ${ann.type === 'COMMENT' ? `<textarea class="ann-comment-input" placeholder="Add your comment..." oninput="window._updateAnnText('${ann.id}', this.value)" onclick="event.stopPropagation()">${escHtml(ann.text || '')}</textarea>` : ''}
+      </div>`;
+    });
+
+    body.innerHTML = html;
+  }
+
+  // Global handlers for annotation card actions
+  window._selectAnn = function(id) {
+    selectedAnnotationId = id;
+    renderAnnotations();
+    renderHighlights();
+    // Scroll to highlight
+    const mark = document.querySelector(`mark[data-ann-id="${id}"]`);
+    if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  window._deleteAnn = function(id) {
+    deleteAnnotation(id);
+  };
+
+  window._updateAnnText = function(id, text) {
+    updateAnnotationText(id, text);
+  };
+
+  // ==================================================================
+  //  Text Selection & Floating Toolbar
+  // ==================================================================
+  function setupTextSelection() {
+    const viewer = document.getElementById('viewer');
+    if (!viewer) return;
+
+    document.addEventListener('mouseup', (e) => {
+      // Ignore clicks on toolbar itself
+      if (floatToolbar.contains(e.target)) return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+        hideToolbar();
+        return;
+      }
+
+      // Check if selection is within the viewer
+      const range = sel.getRangeAt(0);
+      if (!viewer.contains(range.commonAncestorContainer)) {
+        hideToolbar();
+        return;
+      }
+
+      // Find the block
+      let blockEl = range.startContainer;
+      while (blockEl && (!blockEl.dataset || !blockEl.dataset.blockId)) {
+        blockEl = blockEl.parentElement;
+      }
+      if (!blockEl) {
+        hideToolbar();
+        return;
+      }
+
+      const text = sel.toString().trim();
+      if (!text) {
+        hideToolbar();
+        return;
+      }
+
+      pendingSelection = {
+        text: text,
+        blockId: blockEl.dataset.blockId,
+        range: range.cloneRange(),
+      };
+
+      // Position toolbar above selection
+      const rect = range.getBoundingClientRect();
+      floatToolbar.style.left = Math.max(8, rect.left + rect.width / 2 - 70) + 'px';
+      floatToolbar.style.top = Math.max(4, rect.top - 44) + 'px';
+      floatToolbar.classList.add('visible');
+    });
+
+    // Escape to dismiss
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideToolbar();
+        window.getSelection()?.removeAllRanges();
+      }
+    });
+  }
+
+  function hideToolbar() {
+    floatToolbar.classList.remove('visible');
+    pendingSelection = null;
+  }
+
+  tbDelete.addEventListener('click', () => {
+    if (!pendingSelection) return;
+    addAnnotation('DELETION', pendingSelection.text, pendingSelection.blockId);
+    window.getSelection()?.removeAllRanges();
+    hideToolbar();
+  });
+
+  tbComment.addEventListener('click', () => {
+    if (!pendingSelection) return;
+    const ann = addAnnotation('COMMENT', pendingSelection.text, pendingSelection.blockId);
+    window.getSelection()?.removeAllRanges();
+    hideToolbar();
+    // Focus the comment textarea
+    setTimeout(() => {
+      const ta = document.querySelector(`[data-ann-id="${ann.id}"] .ann-comment-input`);
+      if (ta) ta.focus();
+    }, 100);
+  });
+
+  // ==================================================================
+  //  API Interaction
+  // ==================================================================
+  async function loadPlan() {
+    try {
+      const res = await fetch('/api/plan');
+      if (!res.ok) throw new Error('Failed to load plan');
+      const data = await res.json();
+      plan = data.plan || '';
+      permissionMode = data.permissionMode || 'default';
+      blocks = parseMarkdownToBlocks(plan);
+      renderApp();
+    } catch (err) {
+      app.innerHTML = `<div class="loading" style="color:var(--red-text)">Failed to load plan: ${escHtml(err.message)}</div>`;
+    }
+  }
+
+  async function handleApprove() {
+    if (isSubmitting || submitted) return;
+    isSubmitting = true;
+    updateButtons();
+    try {
+      await fetch('/api/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissionMode: permissionMode }),
+      });
+      submitted = 'approved';
+      showOverlay('Plan Approved', 'Claude Code will proceed with the implementation.', 'approved');
+    } catch {
+      isSubmitting = false;
+      updateButtons();
+    }
+  }
+
+  async function handleDeny() {
+    if (isSubmitting || submitted) return;
+
+    if (annotations.length === 0) {
+      showNoAnnotationsDialog();
+      return;
+    }
+
+    isSubmitting = true;
+    updateButtons();
+    try {
+      await fetch('/api/deny', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: exportDiff() }),
+      });
+      submitted = 'denied';
+      showOverlay('Feedback Sent', 'Claude Code will revise the plan based on your annotations.', 'denied');
+    } catch {
+      isSubmitting = false;
+      updateButtons();
+    }
+  }
+
+  function updateButtons() {
+    const approveBtn = document.getElementById('btnApprove');
+    const feedbackBtn = document.getElementById('btnFeedback');
+    if (approveBtn) approveBtn.disabled = isSubmitting;
+    if (feedbackBtn) feedbackBtn.disabled = isSubmitting;
+  }
+
+  // ==================================================================
+  //  Overlays & Dialogs
+  // ==================================================================
+  function showOverlay(title, subtitle, type) {
+    const icon = type === 'approved' ? '&#10003;' : '&#8594;';
+    const color = type === 'approved' ? 'var(--green-text)' : 'var(--accent)';
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    overlay.innerHTML = `<div class="overlay-box">
+      <div class="overlay-icon" style="color:${color}">${icon}</div>
+      <div class="overlay-title">${title}</div>
+      <div class="overlay-subtitle">${subtitle}</div>
+    </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+  }
+
+  function showNoAnnotationsDialog() {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'dialog-backdrop';
+    backdrop.innerHTML = `<div class="dialog">
+      <h3>Add Annotations First</h3>
+      <p>To provide feedback, select text in the plan and add annotations. Claude Code will use your annotations to revise the plan.</p>
+      <div class="dialog-actions">
+        <button class="btn btn-approve" id="dialogOk">OK</button>
+      </div>
+    </div>`;
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('#dialogOk').addEventListener('click', () => {
+      backdrop.remove();
+    });
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) backdrop.remove();
+    });
+  }
+
+  // ==================================================================
+  //  Keyboard Shortcuts
+  // ==================================================================
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      if (isSubmitting || submitted) return;
+      const tag = (e.target || {}).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      if (annotations.length === 0) {
+        handleApprove();
+      } else {
+        handleDeny();
+      }
+    }
+  });
+
+  // ==================================================================
+  //  Main Render
+  // ==================================================================
+  function renderApp() {
+    const panelClass = panelOpen ? '' : ' collapsed';
+    app.innerHTML = `
+      <header class="header">
+        <div class="header-left">
+          <span class="header-title">Plan Review</span>
+          <span class="badge empty" id="annBadge">0</span>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-feedback" id="btnFeedback" title="Send Feedback (annotations required)">Send Feedback</button>
+          <button class="btn btn-approve" id="btnApprove" title="Approve plan (Cmd+Enter)">Approve</button>
+          <button class="btn-toggle${panelOpen ? ' active' : ''}" id="btnTogglePanel" title="Toggle annotations panel">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div class="main-content">
+        <div class="viewer" id="viewer">
+          <div class="viewer-inner" id="viewerInner">
+            ${renderBlocks(blocks)}
+          </div>
+        </div>
+        <div class="panel${panelClass}" id="panel">
+          <div class="panel-header">
+            Annotations
+            <span style="font-size:11px;color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0">
+              ${annotations.length}
+            </span>
+          </div>
+          <div class="panel-body" id="panelBody"></div>
+        </div>
+      </div>
+    `;
+
+    // Bind button events
+    document.getElementById('btnApprove').addEventListener('click', handleApprove);
+    document.getElementById('btnFeedback').addEventListener('click', handleDeny);
+    document.getElementById('btnTogglePanel').addEventListener('click', () => {
+      panelOpen = !panelOpen;
+      const panel = document.getElementById('panel');
+      const toggle = document.getElementById('btnTogglePanel');
+      if (panelOpen) {
+        panel.classList.remove('collapsed');
+        toggle.classList.add('active');
+      } else {
+        panel.classList.add('collapsed');
+        toggle.classList.remove('active');
+      }
+    });
+
+    renderAnnotations();
+    setupTextSelection();
+    updateBadge();
+  }
+
+  // ==================================================================
+  //  Init
+  // ==================================================================
+  loadPlan();
+
+})();
+</script>
+
+</body>
+</html>

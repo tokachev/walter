@@ -1,0 +1,6 @@
+anthropic
+mcp
+python-dotenv
+google-cloud-bigquery
+snowflake-connector-python
+cryptography
