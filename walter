@@ -230,9 +230,7 @@ if [ -n "$BQ_CREDENTIALS" ]; then
   ENV_VARS+=(-e "BQ_CREDENTIALS_PATH=/opt/secrets/bq-credentials.json")
 fi
 
-# ── Plannotator port ──────────────────────────────────────────
-PLANNOTATOR_PORT="${PLANNOTATOR_PORT:-19432}"
-ENV_VARS+=(-e "PLANNOTATOR_PORT=$PLANNOTATOR_PORT")
+# ── Plannotator (disabled — no port binding) ──────────────────
 
 # ── Entrypoint args (network-lock allowlist) ─────────────────
 ENTRYPOINT_ARGS=()
@@ -254,13 +252,17 @@ echo ""
 echo "  Agents:    $([ -d "$CLAUDE_HOME/agents" ] && echo "mounted from $CLAUDE_HOME/agents" || echo "not found")"
 echo "  Settings:  $([ -f "$CLAUDE_HOME/settings.json" ] && echo "merged from host" || echo "container defaults")"
 echo ""
-echo "  Plan Review: http://localhost:$PLANNOTATOR_PORT (when active)"
-echo ""
 if [ "$SNOWFLAKE_ENABLED" = true ]; then
 echo "  Snowflake:"
 echo "     MCP: snowflake-readonly (read-only)"
 echo "     Account: $SNOWFLAKE_ACCOUNT"
 echo "     Key: $SNOWFLAKE_KEY"
+echo ""
+fi
+if [ -n "$MEMORY_DIR" ] && [ -d "$MEMORY_DIR" ]; then
+echo "  Memory Tool:"
+echo "     MCP: memory-tool (cognitive memory)"
+echo "     DB: $MEMORY_DIR/chromadb_data"
 echo ""
 fi
 if [ "$DETECTIVE_ENABLED" = true ]; then
@@ -290,7 +292,6 @@ docker run --rm $INTERACTIVE_FLAG \
   "${MOUNTS[@]}" \
   "${ENV_VARS[@]}" \
   --tmpfs /tmp:exec \
-  -p "${PLANNOTATOR_PORT}:${PLANNOTATOR_PORT}" \
   --security-opt no-new-privileges \
   "$IMAGE_NAME:$IMAGE_TAG" \
   "${ENTRYPOINT_ARGS[@]}" \

@@ -296,11 +296,56 @@ if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
   fi
 fi
 
+# ── MCP: Memory Tool ─────────────────────────────────────────
+if [ -f "/opt/memory_tool/mcp_server.py" ]; then
+  MCP_JSON=$(echo "$MCP_JSON" | jq \
+    '.mcpServers["memory-tool"] = {
+      "command": "python3",
+      "args": ["/opt/memory_tool/mcp_server.py"],
+      "env": {
+        "MEMORY_DB_DIR": "/opt/memory_tool/chromadb_data"
+      }
+    }')
+  echo "🔌 MCP: memory-tool (cognitive memory)"
+  echo ""
+fi
+
 # ── Write MCP config if any servers registered ───────────────
 HAS_MCP=$(echo "$MCP_JSON" | jq '.mcpServers | length')
 if [ "$HAS_MCP" -gt 0 ]; then
   echo "$MCP_JSON" > "$MCP_CONFIG"
   MCP_ARGS=(--mcp-config "$MCP_CONFIG")
+fi
+
+# ── Ensure built-in agents survive host agents mount ─────────
+# If host mounted ~/.claude/agents (read-only), it shadows the Dockerfile
+# agents. Copy built-in agents into a writable merged dir and point HOME there.
+AGENTS_DIR="$HOME/.claude/agents"
+BUILTIN_AGENTS_DIR="/opt/detective"
+NEEDS_MERGE=false
+
+if [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_DIR" ]; then
+  for f in "$BUILTIN_AGENTS_DIR"/*.md; do
+    [ -f "$f" ] || continue
+    fname=$(basename "$f")
+    if [ ! -f "$AGENTS_DIR/$fname" ]; then
+      NEEDS_MERGE=true
+      break
+    fi
+  done
+fi
+
+if [ "$NEEDS_MERGE" = true ]; then
+  RUNTIME_HOME="/tmp/claude-runtime-home"
+  mkdir -p "$RUNTIME_HOME"
+  cp -a "$HOME/." "$RUNTIME_HOME/" 2>/dev/null || true
+  mkdir -p "$RUNTIME_HOME/.claude/agents"
+  for f in "$BUILTIN_AGENTS_DIR"/*.md; do
+    [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/agents/"
+  done
+  chown -R node:node "$RUNTIME_HOME"
+  echo "  ✓ Built-in agents merged into runtime home"
+  exec gosu node env HOME="$RUNTIME_HOME" claude --dangerously-skip-permissions "${MCP_ARGS[@]}" "$@"
 fi
 
 exec gosu node claude --dangerously-skip-permissions "${MCP_ARGS[@]}" "$@"
