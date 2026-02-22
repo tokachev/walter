@@ -1,89 +1,51 @@
 """
-detective_core.py — investigation logic without UI/terminal output
-Used by both the CLI (detective.py) and the MCP server (mcp_server.py)
+detective_core.py — investigation logic using claude CLI for LLM calls.
+Uses Claude Code's auth (OAuth) — no separate API key needed.
 """
 
 import os
+import re
 import json
+import subprocess
 from datetime import datetime
 from typing import Optional
-import anthropic
-
-MODEL = os.getenv("DETECTIVE_MODEL", "claude-opus-4-6")
-MAX_ITERATIONS = int(os.getenv("DETECTIVE_MAX_ITER", "15"))
-MAX_TOKENS = int(os.getenv("DETECTIVE_MAX_TOKENS", "8000"))
 
 from connectors import QueryResult
 
-# ─── Tools definition (shared) ───────────────────────────────────────────────
+MODEL = os.getenv("DETECTIVE_MODEL", "claude-sonnet-4-20250514")
+MAX_ITERATIONS = int(os.getenv("DETECTIVE_MAX_ITER", "15"))
 
-TOOLS = [
-    {
-        "name": "run_sql",
-        "description": (
-            "Execute an SQL query on the specified platform (bigquery or snowflake). "
-            "Use to verify hypotheses, explore data, compare time periods. "
-            "Always add LIMIT to avoid pulling millions of rows unnecessarily."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "sql": {"type": "string", "description": "SQL query"},
-                "platform": {
-                    "type": "string",
-                    "enum": ["bigquery", "snowflake", "both"],
-                    "description": "Platform"
-                },
-                "description": {"type": "string", "description": "What this query is checking"}
-            },
-            "required": ["sql", "platform", "description"]
-        }
-    },
-    {
-        "name": "get_schema",
-        "description": "Get the schema of a table (columns, types). Use before writing SQL.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "table": {"type": "string", "description": "Table name: dataset.table or db.schema.table"},
-                "platform": {"type": "string", "enum": ["bigquery", "snowflake"]}
-            },
-            "required": ["table", "platform"]
-        }
-    },
-    {
-        "name": "list_tables",
-        "description": "List tables in a dataset/schema. Use to search for tables.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "dataset": {"type": "string", "description": "Dataset (BQ) or schema (Snowflake)"},
-                "platform": {"type": "string", "enum": ["bigquery", "snowflake"]},
-                "filter": {"type": "string", "description": "Filter by name (substring)"}
-            },
-            "required": ["dataset", "platform"]
-        }
-    },
-    {
-        "name": "conclude",
-        "description": "Record final conclusion. Call when root cause is found or hypotheses are exhausted.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["found", "inconclusive", "no_anomaly"],
-                    "description": "found/inconclusive/no_anomaly"
-                },
-                "root_cause": {"type": "string"},
-                "evidence": {"type": "array", "items": {"type": "string"}},
-                "recommendation": {"type": "string"},
-                "investigated_hypotheses": {"type": "array", "items": {"type": "string"}}
-            },
-            "required": ["status", "evidence", "recommendation", "investigated_hypotheses"]
-        }
-    }
-]
+# ─── Tools description (prompt-based tool use) ───────────────────────────────
+
+TOOLS_PROMPT = """You have these investigation tools. To use one, output a fenced JSON block.
+Do NOT use any other tools (no Bash, no Read, etc.) — ONLY these:
+
+1. **run_sql** — Execute SQL query
+   ```json
+   {"tool": "run_sql", "input": {"sql": "SELECT ...", "platform": "bigquery|snowflake|both", "description": "what this checks"}}
+   ```
+
+2. **get_schema** — Get table columns and types
+   ```json
+   {"tool": "get_schema", "input": {"table": "dataset.table", "platform": "bigquery|snowflake"}}
+   ```
+
+3. **list_tables** — List tables in a dataset/schema
+   ```json
+   {"tool": "list_tables", "input": {"dataset": "name", "platform": "bigquery|snowflake"}}
+   ```
+
+4. **conclude** — Final conclusion (MUST call when done)
+   ```json
+   {"tool": "conclude", "input": {"status": "found|inconclusive|no_anomaly", "root_cause": "...", "evidence": ["..."], "recommendation": "...", "investigated_hypotheses": ["..."]}}
+   ```
+
+Rules:
+- Output EXACTLY ONE tool call per response as a fenced ```json block
+- Think step by step BEFORE the JSON block
+- Always LIMIT SQL queries
+- Call conclude when done or hypotheses exhausted
+"""
 
 
 def build_system_prompt(available_platforms: list[str]) -> str:
@@ -111,15 +73,17 @@ Available platforms: {platforms_str}
 - COUNT(*) vs COUNT(col) = number of NULLs
 - For comparison: current period vs average over 7-30 days
 - Query limit: {MAX_ITERATIONS}
-"""
+{TOOLS_PROMPT}"""
 
+
+# ─── Tool executor (unchanged — handles SQL/schema/tables) ──────────────────
 
 class ToolExecutor:
     def __init__(self, connectors: dict):
         self.connectors = connectors
         self.query_count = 0
         self.conclusion = None
-        self.log = []  # log for MCP mode
+        self.log = []
 
     def execute(self, tool_name: str, tool_input: dict) -> str:
         if tool_name == "run_sql":
@@ -178,76 +142,161 @@ class ToolExecutor:
         return json.dumps(result.rows, default=str, ensure_ascii=False, indent=2)
 
 
-def run_investigation(problem: str, available_platforms: list[str], connectors: dict) -> dict:
-    """
-    Runs the investigation. Returns a dict with fields:
-    - conclusion: dict (from conclude tool)
-    - log: list[str] (what was executed)
-    - query_count: int
-    - thinking: list[str] (text blocks from the agent)
-    """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    oauth_token = os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
-    if api_key:
-        client = anthropic.Anthropic(api_key=api_key)
-    elif oauth_token:
-        client = anthropic.Anthropic(auth_token=oauth_token)
-    else:
-        raise ValueError("Required: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN")
-    executor = ToolExecutor(connectors)
+# ─── Claude CLI integration ─────────────────────────────────────────────────
 
-    system_prompt = build_system_prompt(available_platforms)
-    messages = [{"role": "user", "content": problem}]
-    thinking_blocks = []
-
-    iteration = 0
-    while iteration < MAX_ITERATIONS * 3:
-        iteration += 1
-
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=system_prompt,
-            tools=TOOLS,
-            messages=messages,
+def call_claude(prompt: str) -> str:
+    """Call claude CLI in print mode. Inherits OAuth auth from environment."""
+    result = subprocess.run(
+        ["claude", "-p", "--model", MODEL, "--max-turns", "1"],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"claude CLI error (exit {result.returncode}): {result.stderr[:500]}"
         )
+    return result.stdout.strip()
 
-        messages.append({"role": "assistant", "content": response.content})
 
-        tool_calls = []
-        for block in response.content:
-            if block.type == "text" and block.text.strip():
-                thinking_blocks.append(block.text.strip())
-            elif block.type == "tool_use":
-                tool_calls.append(block)
-
-        if not tool_calls:
-            if executor.conclusion:
-                break
-            messages.append({"role": "user", "content": "Call conclude for the final conclusion."})
+def parse_action(response: str) -> Optional[dict]:
+    """Extract tool call JSON from Claude's response."""
+    # Strategy 1: JSON in fenced code blocks
+    for match in re.finditer(r'```(?:json)?\s*\n?(.*?)\n?\s*```', response, re.DOTALL):
+        try:
+            data = json.loads(match.group(1).strip())
+            if isinstance(data, dict) and "tool" in data:
+                return data
+        except (json.JSONDecodeError, ValueError):
             continue
 
-        tool_results = []
-        for tc in tool_calls:
-            result = executor.execute(tc.name, tc.input)
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tc.id,
-                "content": result
-            })
-            if tc.name == "conclude":
-                break
+    # Strategy 2: brace-matching for top-level JSON objects
+    depth = 0
+    start = None
+    for i, ch in enumerate(response):
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    data = json.loads(response[start:i + 1])
+                    if isinstance(data, dict) and "tool" in data:
+                        return data
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                start = None
 
-        messages.append({"role": "user", "content": tool_results})
+    return None
+
+
+def build_iteration_prompt(
+    system: str, problem: str, history: list, force_conclude: bool = False
+) -> str:
+    """Build a full prompt for one iteration of the investigation."""
+    parts = [system]
+    parts.append(f"\n## Problem\n{problem}\n")
+
+    if history:
+        parts.append("## Investigation log\n")
+        for i, step in enumerate(history, 1):
+            if step.get("type") == "thinking":
+                parts.append(f"**Step {i} — Analysis:**\n{step['text'][:500]}\n")
+            elif step.get("type") == "tool_result":
+                input_str = json.dumps(step["input"], ensure_ascii=False)
+                parts.append(
+                    f"**Step {i} — {step['tool']}({input_str}):**\n"
+                    f"```\n{step['result'][:2000]}\n```\n"
+                )
+
+    query_count = sum(
+        1 for h in history
+        if h.get("type") == "tool_result" and h.get("tool") != "conclude"
+    )
+    remaining = MAX_ITERATIONS - query_count
+    parts.append(f"\nQueries used: {query_count}/{MAX_ITERATIONS}")
+
+    if force_conclude or remaining <= 0:
+        parts.append(
+            "\n**Query limit reached. You MUST call `conclude` now with your best assessment.**"
+        )
+    elif remaining <= 3:
+        parts.append(f"\nOnly {remaining} queries left. Start wrapping up.")
+
+    parts.append("\nWhat is your next investigation step? Think, then output your tool call.")
+    return "\n".join(parts)
+
+
+# ─── Main investigation loop ────────────────────────────────────────────────
+
+def run_investigation(
+    problem: str, available_platforms: list[str], connectors: dict
+) -> dict:
+    """
+    Runs the investigation using claude CLI for reasoning.
+    Returns a dict with: conclusion, log, query_count, thinking.
+    """
+    executor = ToolExecutor(connectors)
+    system = build_system_prompt(available_platforms)
+    history = []
+    thinking_blocks = []
+    retries_without_action = 0
+
+    for iteration in range(MAX_ITERATIONS * 3):
+        force_conclude = executor.query_count >= MAX_ITERATIONS
+        prompt = build_iteration_prompt(system, problem, history, force_conclude)
+
+        try:
+            response = call_claude(prompt)
+        except Exception as e:
+            thinking_blocks.append(f"Error calling Claude: {e}")
+            break
+
+        # Extract thinking (text before the JSON block)
+        action = parse_action(response)
+        json_match = re.search(r'```(?:json)?\s*\n?', response)
+        if json_match:
+            thinking_text = response[:json_match.start()].strip()
+        else:
+            thinking_text = response.strip()
+
+        if thinking_text:
+            thinking_blocks.append(thinking_text)
+            history.append({"type": "thinking", "text": thinking_text})
+
+        if not action:
+            retries_without_action += 1
+            if retries_without_action >= 3:
+                break
+            continue
+
+        retries_without_action = 0
+        tool_name = action.get("tool", "")
+        tool_input = action.get("input", {})
+
+        if tool_name == "conclude":
+            executor.conclusion = tool_input
+            break
+
+        if tool_name in ("run_sql", "get_schema", "list_tables"):
+            result = executor.execute(tool_name, tool_input)
+            history.append({
+                "type": "tool_result",
+                "tool": tool_name,
+                "input": tool_input,
+                "result": result,
+            })
+        else:
+            history.append({
+                "type": "thinking",
+                "text": f"Unknown tool requested: {tool_name}",
+            })
 
         if executor.conclusion:
             break
-
-        if executor.query_count >= MAX_ITERATIONS:
-            messages.append({
-                "role": "user",
-                "content": f"Used {executor.query_count}/{MAX_ITERATIONS} queries. Summarize and call conclude."
-            })
 
     return {
         "conclusion": executor.conclusion,
@@ -257,35 +306,36 @@ def run_investigation(problem: str, available_platforms: list[str], connectors: 
     }
 
 
+# ─── MCP formatting ─────────────────────────────────────────────────────────
+
 def format_result_for_mcp(problem: str, result: dict) -> str:
     """Formats the investigation result into readable text for MCP."""
     lines = []
-    lines.append(f"# 🔍 Data Detective — Investigation result\n")
+    lines.append("# Data Detective — Investigation result\n")
     lines.append(f"**Problem:** {problem}\n")
     lines.append(f"**Queries executed:** {result['query_count']}\n")
 
     if result["log"]:
         lines.append("**Investigation log:**")
         for entry in result["log"]:
-            lines.append(f"  • {entry}")
+            lines.append(f"  - {entry}")
         lines.append("")
 
     if result["thinking"]:
         lines.append("**Agent analysis:**")
         for thought in result["thinking"]:
-            # Take the first 300 characters of each thinking block
             short = thought[:300] + "..." if len(thought) > 300 else thought
             lines.append(f"  {short}")
         lines.append("")
 
     conclusion = result.get("conclusion")
     if not conclusion:
-        lines.append("⚠️  Agent did not provide a final conclusion.")
+        lines.append("Agent did not provide a final conclusion.")
         return "\n".join(lines)
 
     status = conclusion.get("status", "inconclusive")
-    icons = {"found": "🎯", "inconclusive": "🔍", "no_anomaly": "✅"}
-    lines.append(f"## {icons.get(status, '❓')} Conclusion\n")
+    labels = {"found": "ROOT CAUSE FOUND", "inconclusive": "INCONCLUSIVE", "no_anomaly": "NO ANOMALY"}
+    lines.append(f"## {labels.get(status, 'UNKNOWN')} — Conclusion\n")
 
     if conclusion.get("root_cause"):
         lines.append(f"**Root Cause:**\n{conclusion['root_cause']}\n")
@@ -293,13 +343,13 @@ def format_result_for_mcp(problem: str, result: dict) -> str:
     if conclusion.get("evidence"):
         lines.append("**Evidence:**")
         for e in conclusion["evidence"]:
-            lines.append(f"  • {e}")
+            lines.append(f"  - {e}")
         lines.append("")
 
     if conclusion.get("investigated_hypotheses"):
         lines.append("**Investigated hypotheses:**")
         for h in conclusion["investigated_hypotheses"]:
-            lines.append(f"  • {h}")
+            lines.append(f"  - {h}")
         lines.append("")
 
     if conclusion.get("recommendation"):
@@ -308,7 +358,9 @@ def format_result_for_mcp(problem: str, result: dict) -> str:
     return "\n".join(lines)
 
 
-def investigate_and_capture(problem: str, available_platforms: list[str], connectors: dict) -> str:
+def investigate_and_capture(
+    problem: str, available_platforms: list[str], connectors: dict
+) -> str:
     """Runs the investigation and returns formatted text. For the MCP server."""
     result = run_investigation(problem, available_platforms, connectors)
     return format_result_for_mcp(problem, result)

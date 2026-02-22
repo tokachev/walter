@@ -1,4 +1,3 @@
-anthropic
 mcp
 python-dotenv
 google-cloud-bigquery

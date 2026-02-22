@@ -1,0 +1,302 @@
+#!/bin/bash
+# ══════════════════════════════════════════════════════════════
+#  plan-executor.sh — Sequential plan execution for Walter
+#
+#  Reads a markdown plan file with ### Task N: headers,
+#  executes each task in a fresh `claude -p` session,
+#  handles [WAIT] items and retries.
+# ══════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+# ── Config ──────────────────────────────────────────────────
+PLAN_FILE="${WALTER_PLAN_FILE:?WALTER_PLAN_FILE is required}"
+MAX_ITERATIONS="${WALTER_MAX_ITERATIONS:-50}"
+RETRY_COUNT="${WALTER_RETRY_COUNT:-2}"
+CLAUDE_ARGS_STR="${WALTER_CLAUDE_ARGS_STR:-}"
+SIGNAL_FILE="/tmp/.walter-signal"
+
+# Parse CLAUDE_ARGS_STR back into array
+CLAUDE_ARGS=()
+if [ -n "$CLAUDE_ARGS_STR" ]; then
+  read -ra CLAUDE_ARGS <<< "$CLAUDE_ARGS_STR"
+fi
+
+# ── Helpers ─────────────────────────────────────────────────
+
+log() { echo "▸ $*"; }
+log_ok() { echo "  ✓ $*"; }
+log_err() { echo "  ✗ $*" >&2; }
+log_warn() { echo "  ⚠ $*"; }
+
+# find_next_task — returns the task number of the first task with unchecked items.
+# Scans for ### Task N: headers and checks if there are - [ ] or - [WAIT] items.
+# Returns empty string if all tasks are done.
+find_next_task() {
+  local plan="$1"
+  local current_task=""
+  local has_unchecked=false
+
+  while IFS= read -r line; do
+    # Match ### Task N: header (with optional text after)
+    if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+([0-9]+) ]]; then
+      # If previous task had unchecked items, return it
+      if [ "$has_unchecked" = true ] && [ -n "$current_task" ]; then
+        echo "$current_task"
+        return 0
+      fi
+      current_task="${BASH_REMATCH[1]}"
+      has_unchecked=false
+    fi
+    # Check for unchecked items
+    if [ -n "$current_task" ]; then
+      if [[ "$line" =~ ^[[:space:]]*-[[:space:]]\[[[:space:]]\] ]] || \
+         [[ "$line" =~ ^[[:space:]]*-[[:space:]]\[WAIT\] ]]; then
+        has_unchecked=true
+      fi
+    fi
+  done < "$plan"
+
+  # Check last task
+  if [ "$has_unchecked" = true ] && [ -n "$current_task" ]; then
+    echo "$current_task"
+    return 0
+  fi
+
+  echo ""
+}
+
+# extract_task_title — returns the title from a ### Task N: <title> header
+extract_task_title() {
+  local plan="$1"
+  local task_num="$2"
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+${task_num}:[[:space:]]*(.*) ]]; then
+      echo "${BASH_REMATCH[1]}"
+      return 0
+    fi
+  done < "$plan"
+
+  echo "Task $task_num"
+}
+
+# extract_task_section — returns the full text of a task section (from header to next header)
+extract_task_section() {
+  local plan="$1"
+  local task_num="$2"
+  local in_section=false
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+${task_num}[[:space:]:]  ]]; then
+      in_section=true
+      echo "$line"
+      continue
+    fi
+    if [ "$in_section" = true ]; then
+      # Stop at next task header or ## header
+      if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+[0-9]+ ]] || \
+         [[ "$line" =~ ^##[[:space:]] && ! "$line" =~ ^### ]]; then
+        break
+      fi
+      echo "$line"
+    fi
+  done < "$plan"
+}
+
+# extract_validation_commands — pulls ## Validation Commands section
+extract_validation_commands() {
+  local plan="$1"
+  local in_section=false
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^##[[:space:]]+Validation[[:space:]]+Commands ]]; then
+      in_section=true
+      continue
+    fi
+    if [ "$in_section" = true ]; then
+      # Stop at next ## header
+      if [[ "$line" =~ ^##[[:space:]] ]]; then
+        break
+      fi
+      echo "$line"
+    fi
+  done < "$plan"
+}
+
+# count_incomplete_tasks — counts remaining - [ ] or - [WAIT] lines in the entire plan
+count_incomplete_tasks() {
+  local plan="$1"
+  grep -cE '^\s*-\s\[\s\]|^\s*-\s\[WAIT\]' "$plan" 2>/dev/null || echo "0"
+}
+
+# get_first_unchecked — returns first - [ ] or - [WAIT] line in a task section
+get_first_unchecked() {
+  local plan="$1"
+  local task_num="$2"
+  local section
+  section=$(extract_task_section "$plan" "$task_num")
+  echo "$section" | grep -m1 -E '^\s*-\s\[\s\]|^\s*-\s\[WAIT\]' || true
+}
+
+
+# ── Banner ──────────────────────────────────────────────────
+
+echo ""
+echo "══════════════════════════════════════════════════════"
+echo "  walter plan-executor"
+echo ""
+echo "  Plan:           $PLAN_FILE"
+echo "  Max iterations: $MAX_ITERATIONS"
+echo "  Retry count:    $RETRY_COUNT"
+echo "══════════════════════════════════════════════════════"
+echo ""
+
+# ── Validate plan file ──────────────────────────────────────
+
+if [ ! -f "$PLAN_FILE" ]; then
+  log_err "Plan file not found: $PLAN_FILE"
+  exit 1
+fi
+
+
+# ── Main loop ───────────────────────────────────────────────
+
+for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  log "Iteration $iteration/$MAX_ITERATIONS"
+
+  # Find next task with unchecked items
+  task_num=$(find_next_task "$PLAN_FILE")
+  if [ -z "$task_num" ]; then
+    echo ""
+    log_ok "All tasks complete!"
+    echo ""
+    exit 0
+  fi
+
+  task_title=$(extract_task_title "$PLAN_FILE" "$task_num")
+  log "Task $task_num: $task_title"
+
+  # Check if first unchecked item is [WAIT]
+  first_unchecked=$(get_first_unchecked "$PLAN_FILE" "$task_num")
+
+  if [[ "$first_unchecked" =~ \[WAIT\] ]]; then
+    echo ""
+    echo "  ⏸  WAIT step encountered:"
+    echo "  $first_unchecked"
+    echo ""
+
+    if [ -t 0 ]; then
+      read -rp "  Press ENTER to mark as done and continue..." _
+    else
+      log_warn "Non-interactive mode — cannot wait for user input"
+      log_err "Aborting: [WAIT] step requires interactive terminal"
+      exit 1
+    fi
+
+    # Mark [WAIT] → [x] in plan file
+    # Escape the line for sed (handle special chars)
+    wait_pattern=$(echo "$first_unchecked" | sed 's/[][\/.^$*]/\\&/g' | sed 's/\[WAIT\]/\\[WAIT\\]/')
+    wait_replacement=$(echo "$first_unchecked" | sed 's/\[WAIT\]/[x]/')
+    wait_replacement_escaped=$(echo "$wait_replacement" | sed 's/[&/\]/\\&/g')
+    sed -i "s/${wait_pattern}/${wait_replacement_escaped}/" "$PLAN_FILE"
+    log_ok "Marked WAIT step as done"
+    continue
+  fi
+
+  # Build task section and validation commands
+  task_section=$(extract_task_section "$PLAN_FILE" "$task_num")
+  validation_cmds=$(extract_validation_commands "$PLAN_FILE")
+
+  # Build prompt
+  prompt="You are executing a plan inside a walter container.
+
+Read the plan file at ${PLAN_FILE}.
+You are executing Task ${task_num}: ${task_title}.
+ONLY work on this task. Do NOT continue to the next task.
+
+Here is the task section for reference:
+${task_section}
+
+Instructions:
+1. ANNOUNCE: Give a brief overview of what you will do (max 200 words).
+2. IMPLEMENT: Complete all unchecked [ ] items in Task ${task_num}. Skip any [WAIT] items.
+3. VALIDATE: Run the following validation commands from the plan and fix any failures:
+${validation_cmds}
+4. COMPLETE: Mark each completed [ ] item as [x] in the plan file (${PLAN_FILE}). Do NOT commit.
+   - If NO unchecked [ ] items remain in the entire plan → output exactly: <<<WALTER:ALL_TASKS_DONE>>>
+   - If more tasks remain → STOP immediately (do not start the next task)
+   - If you could not complete the task → output exactly: <<<WALTER:TASK_FAILED>>>
+
+IMPORTANT: You MUST output one of the signal strings above before finishing."
+
+  # Run claude with retry logic
+  retries=0
+  task_success=false
+
+  while [ "$retries" -le "$RETRY_COUNT" ]; do
+    if [ "$retries" -gt 0 ]; then
+      log_warn "Retry $retries/$RETRY_COUNT for Task $task_num"
+    fi
+
+    # Clear signal file
+    rm -f "$SIGNAL_FILE"
+    echo "UNKNOWN" > "$SIGNAL_FILE"
+
+    log "Running claude -p for Task $task_num..."
+    echo ""
+
+    # Run claude and scan output for signals using process substitution
+    exit_code=0
+    while IFS= read -r line; do
+      # Pass through to terminal
+      echo "$line"
+
+      # Scan for signals
+      if [[ "$line" == *'<<<WALTER:ALL_TASKS_DONE>>>'* ]]; then
+        echo "ALL_TASKS_DONE" > "$SIGNAL_FILE"
+      elif [[ "$line" == *'<<<WALTER:TASK_FAILED>>>'* ]]; then
+        echo "TASK_FAILED" > "$SIGNAL_FILE"
+      fi
+    done < <(claude "${CLAUDE_ARGS[@]}" -p "$prompt" --max-turns 30 --verbose 2>&1) || exit_code=$?
+
+    echo ""
+
+    # Read signal
+    signal=$(cat "$SIGNAL_FILE" 2>/dev/null || echo "UNKNOWN")
+
+    if [ "$exit_code" -ne 0 ] || [ "$signal" = "TASK_FAILED" ]; then
+      retries=$((retries + 1))
+      if [ "$retries" -gt "$RETRY_COUNT" ]; then
+        log_err "Task $task_num FAILED after $RETRY_COUNT retries"
+        exit 1
+      fi
+      log_warn "Task $task_num failed (exit=$exit_code, signal=$signal)"
+      sleep 2
+      continue
+    fi
+
+    if [ "$signal" = "ALL_TASKS_DONE" ]; then
+      echo ""
+      log_ok "All tasks complete!"
+      echo ""
+      exit 0
+    fi
+
+    # Task completed normally (more tasks remain)
+    task_success=true
+    break
+  done
+
+  if [ "$task_success" = true ]; then
+    remaining=$(count_incomplete_tasks "$PLAN_FILE")
+    log_ok "Task $task_num done. Remaining unchecked items: $remaining"
+  fi
+
+  sleep 2
+done
+
+log_err "Reached max iterations ($MAX_ITERATIONS) without completing all tasks"
+exit 1

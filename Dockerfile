@@ -39,6 +39,10 @@ RUN chmod +x /opt/hooks/credential-guard.sh /opt/hooks/scan-credentials.sh
 COPY plannotator/ /opt/plannotator/
 RUN chmod +x /opt/plannotator/hook.sh
 
+# Plan executor: sequential task runner for markdown plans
+COPY plan-executor.sh /opt/plan-executor.sh
+RUN chmod +x /opt/plan-executor.sh
+
 # Install hooks configuration into Claude Code's global settings
 RUN mkdir -p $HOME/.claude \
     && cp /opt/hooks/settings.json $HOME/.claude/settings.json

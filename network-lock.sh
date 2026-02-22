@@ -140,10 +140,14 @@ for ip in $INITIAL_IPS; do
   iptables -A OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT
 done
 
-# DROP everything else
+# REJECT everything else (REJECT returns immediate error; DROP hangs until TCP timeout)
+# Critical: Claude Code connects to telemetry (segment.io, growthbook.io, datadoghq.com)
+# With DROP, each blocked connection hangs 60-120s. With REJECT, it fails in 0.02s.
 iptables -A OUTPUT -j LOG --log-prefix "WALTER-BLOCKED: " --log-level 4 2>/dev/null || true
-iptables -A OUTPUT -j DROP
-iptables -A INPUT -j DROP
+iptables -A OUTPUT -p tcp -j REJECT --reject-with tcp-reset
+iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable
+iptables -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+iptables -A INPUT -j REJECT --reject-with icmp-port-unreachable
 
 echo ""
 echo "🔒 Network lock ACTIVE:"
@@ -236,12 +240,12 @@ if [ -n "$SNOWFLAKE_ACCOUNT" ] && [ -f "${SNOWFLAKE_PRIVATE_KEY_PATH:-/opt/secre
 fi
 
 # ── MCP: Data Detective ─────────────────────────────────────
-if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-  DETECTIVE_ENV=$(jq -n --arg api_key "${ANTHROPIC_API_KEY:-}" \
-    --arg oauth_token "${CLAUDE_CODE_OAUTH_TOKEN:-}" \
+# Detective uses claude CLI for LLM calls (inherits OAuth) — no API key needed.
+# Always register if detective files exist; connectors checked at runtime.
+if [ -f "/opt/detective/mcp_server.py" ]; then
+  DETECTIVE_ENV=$(jq -n \
     --arg model "${DETECTIVE_MODEL:-}" \
     --arg max_iter "${DETECTIVE_MAX_ITER:-}" \
-    --arg max_tokens "${DETECTIVE_MAX_TOKENS:-}" \
     --arg bq_project "${BQ_PROJECT:-}" \
     --arg bq_creds "${BQ_CREDENTIALS_PATH:-}" \
     --arg sf_account "${SF_ACCOUNT:-}" \
@@ -253,11 +257,8 @@ if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
     --arg sf_schema "${SF_SCHEMA:-}" \
     --arg sf_role "${SF_ROLE:-}" \
     '{}
-    + if $api_key != "" then {"ANTHROPIC_API_KEY": $api_key} else {} end
-    + if $oauth_token != "" then {"CLAUDE_CODE_OAUTH_TOKEN": $oauth_token} else {} end
     + if $model != "" then {"DETECTIVE_MODEL": $model} else {} end
     + if $max_iter != "" then {"DETECTIVE_MAX_ITER": $max_iter} else {} end
-    + if $max_tokens != "" then {"DETECTIVE_MAX_TOKENS": $max_tokens} else {} end
     + if $bq_project != "" then {"BQ_PROJECT": $bq_project} else {} end
     + if $bq_creds != "" then {"BQ_CREDENTIALS_PATH": $bq_creds} else {} end
     + if $sf_account != "" then {"SF_ACCOUNT": $sf_account} else {} end
@@ -281,6 +282,18 @@ if [ -n "$ANTHROPIC_API_KEY" ] || [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
   [ -n "$SF_ACCOUNT" ] && echo "  Snowflake: $SF_ACCOUNT"
   echo ""
 
+  # Add Snowflake domain to firewall allowlist if SF is configured
+  if [ -n "$SF_ACCOUNT" ]; then
+    SF_DOMAIN="${SF_ACCOUNT}.snowflakecomputing.com"
+    ALL_DOMAINS="$ALL_DOMAINS,$SF_DOMAIN"
+    SF_IPS=$(resolve_domains "$SF_DOMAIN")
+    for ip in $SF_IPS; do
+      iptables -I OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT 2>/dev/null || true
+      echo "$ip" >> "$ALLOWED_IPS_FILE"
+    done
+    echo "  ✓ Snowflake domain added to firewall allowlist"
+  fi
+
   # Add BigQuery API domains to firewall allowlist if BQ is configured
   if [ -n "$BQ_PROJECT" ]; then
     BQ_DOMAINS="bigquery.googleapis.com,storage.googleapis.com"
@@ -298,10 +311,18 @@ fi
 
 # ── MCP: Memory Tool ─────────────────────────────────────────
 if [ -f "/opt/memory_tool/mcp_server.py" ]; then
+  # Copy Python files to container filesystem for fast imports
+  # (Docker volume mounts on macOS are slow for Python I/O)
+  MEMORY_FAST="/tmp/memory_tool_fast"
+  mkdir -p "$MEMORY_FAST"
+  cp /opt/memory_tool/*.py "$MEMORY_FAST/" 2>/dev/null || true
+  chmod 644 "$MEMORY_FAST/"*.py 2>/dev/null || true
+  python3 -m compileall -q "$MEMORY_FAST/" 2>/dev/null || true
+
   MCP_JSON=$(echo "$MCP_JSON" | jq \
     '.mcpServers["memory-tool"] = {
       "command": "python3",
-      "args": ["/opt/memory_tool/mcp_server.py"],
+      "args": ["/tmp/memory_tool_fast/mcp_server.py"],
       "env": {
         "MEMORY_DB_DIR": "/opt/memory_tool/chromadb_data"
       }
@@ -335,6 +356,9 @@ if [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_DIR" ]; then
   done
 fi
 
+# ── Compute effective HOME ───────────────────────────────────
+EFFECTIVE_HOME="$HOME"
+
 if [ "$NEEDS_MERGE" = true ]; then
   RUNTIME_HOME="/tmp/claude-runtime-home"
   mkdir -p "$RUNTIME_HOME"
@@ -345,7 +369,14 @@ if [ "$NEEDS_MERGE" = true ]; then
   done
   chown -R node:node "$RUNTIME_HOME"
   echo "  ✓ Built-in agents merged into runtime home"
-  exec gosu node env HOME="$RUNTIME_HOME" claude --dangerously-skip-permissions "${MCP_ARGS[@]}" "$@"
+  EFFECTIVE_HOME="$RUNTIME_HOME"
 fi
 
-exec gosu node claude --dangerously-skip-permissions "${MCP_ARGS[@]}" "$@"
+# ── Launch ──────────────────────────────────────────────────
+if [ -n "${WALTER_PLAN_FILE:-}" ]; then
+  # Plan execution mode: delegate to plan-executor.sh
+  export WALTER_CLAUDE_ARGS_STR="--dangerously-skip-permissions ${MCP_ARGS[*]}"
+  exec gosu node env HOME="$EFFECTIVE_HOME" /opt/plan-executor.sh
+else
+  exec gosu node env HOME="$EFFECTIVE_HOME" claude --dangerously-skip-permissions "${MCP_ARGS[@]}" "$@"
+fi

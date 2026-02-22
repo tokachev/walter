@@ -28,7 +28,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import mcp.server.stdio
 import mcp.types as types
-from mcp.server import Server
+from mcp.server import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
 
 # ─── Server initialization ───────────────────────────────────────────────────
@@ -177,7 +177,7 @@ async def main():
                 server_name="data-detective",
                 server_version="1.0.0",
                 capabilities=server.get_capabilities(
-                    notification_options=None,
+                    notification_options=NotificationOptions(),
                     experimental_capabilities={}
                 ),
             ),
