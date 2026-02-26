@@ -38,6 +38,16 @@ find_next_task() {
   local has_unchecked=false
 
   while IFS= read -r line; do
+    # ## headers (Done Criteria, Table sections, etc.) end the current task scope
+    if [[ "$line" =~ ^##[[:space:]] && ! "$line" =~ ^### ]]; then
+      if [ "$has_unchecked" = true ] && [ -n "$current_task" ]; then
+        echo "$current_task"
+        return 0
+      fi
+      current_task=""
+      has_unchecked=false
+      continue
+    fi
     # Match ### Task N: header (with optional text after)
     if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+([0-9]+) ]]; then
       # If previous task had unchecked items, return it
@@ -226,9 +236,11 @@ Instructions:
 3. VALIDATE: Run the following validation commands from the plan and fix any failures:
 ${validation_cmds}
 4. COMPLETE: Mark each completed [ ] item as [x] in the plan file (${PLAN_FILE}). Do NOT commit.
-   - If NO unchecked [ ] items remain in the entire plan → output exactly: <<<WALTER:ALL_TASKS_DONE>>>
-   - If more tasks remain → STOP immediately (do not start the next task)
-   - If you could not complete the task → output exactly: <<<WALTER:TASK_FAILED>>>
+   Then output EXACTLY ONE of the following — nothing else:
+   - If ALL [ ] items in the ENTIRE plan are now [x] → output: <<<WALTER:ALL_TASKS_DONE>>>
+   - If more tasks remain (even if this task was already done) → end your response with NO signal at all
+   - If you hit an actual error that prevented the work → output: <<<WALTER:TASK_FAILED>>>
+   NOTE: a task that was already complete is NOT a failure. Do NOT output TASK_FAILED in that case.
 
 IMPORTANT: You MUST output one of the signal strings above before finishing."
 

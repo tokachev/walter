@@ -60,10 +60,14 @@ resolve_domains() {
   IFS=',' read -ra DARR <<< "$domains"
   for domain in "${DARR[@]}"; do
     domain=$(echo "$domain" | xargs)
+    # Method 1: dig (explicit DNS protocol query)
     for dns in $DNS_SERVERS; do
       NEW_IPS=$(dig +short @"$dns" "$domain" 2>/dev/null | grep -E '^[0-9]+\.' || true)
       [ -n "$NEW_IPS" ] && ips="$ips $NEW_IPS" && break
     done
+    # Method 2: getent ahosts (libc resolver — matches Python/curl behavior)
+    NEW_IPS=$(getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | grep -E '^[0-9]+\.' || true)
+    [ -n "$NEW_IPS" ] && ips="$ips $NEW_IPS"
   done
   echo "$ips" | tr ' ' '\n' | sort -u | grep -v '^$'
 }
@@ -98,7 +102,7 @@ done
 # ── Background IP refresher ──────────────────────────────────
 (
   while true; do
-    sleep 300
+    sleep 60
     NEW_IPS=$(resolve_domains "$ALL_DOMAINS")
     if [ -n "$NEW_IPS" ]; then
       CURRENT=$(cat "$ALLOWED_IPS_FILE" 2>/dev/null)
@@ -149,13 +153,40 @@ iptables -A OUTPUT -j REJECT --reject-with icmp-port-unreachable
 iptables -A INPUT -p tcp -j REJECT --reject-with tcp-reset
 iptables -A INPUT -j REJECT --reject-with icmp-port-unreachable
 
+# ── Warmup: Python resolver (matches google-cloud-bigquery behavior) ──
+WARMUP_IPS=$(python3 -c "
+import socket
+domains = '${ALL_DOMAINS}'.split(',')
+seen = set()
+for d in domains:
+    d = d.strip()
+    try:
+        for info in socket.getaddrinfo(d, 443, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in seen:
+                seen.add(ip)
+                print(ip)
+    except:
+        pass
+" 2>/dev/null || true)
+
+WARMUP_ADDED=0
+for ip in $WARMUP_IPS; do
+  if ! grep -q "^${ip}$" "$ALLOWED_IPS_FILE" 2>/dev/null; then
+    iptables -I OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT 2>/dev/null || true
+    echo "$ip" >> "$ALLOWED_IPS_FILE"
+    WARMUP_ADDED=$((WARMUP_ADDED + 1))
+  fi
+done
+[ "$WARMUP_ADDED" -gt 0 ] && echo "  + $WARMUP_ADDED extra IPs from Python resolver"
+
 echo ""
 echo "🔒 Network lock ACTIVE:"
 echo "  ✅ Allowed: ${ALL_DOMAINS//,/, } (HTTPS only)"
 echo "  ✅ Allowed: DNS ($(echo $DNS_SERVERS | tr '\n' ', ' | sed 's/,$//'))"
 echo "  ✅ Allowed: localhost"
 echo "  🚫 Blocked: everything else (IPv4 DROP + IPv6 DROP)"
-echo "  🔄 IP refresh: every 5 min (PID $REFRESH_PID)"
+echo "  🔄 IP refresh: every 60s (PID $REFRESH_PID)"
 echo ""
 
 # ── Connectivity test ─────────────────────────────────────────
@@ -236,6 +267,31 @@ if [ -n "$SNOWFLAKE_ACCOUNT" ] && [ -f "${SNOWFLAKE_PRIVATE_KEY_PATH:-/opt/secre
   echo "  Warehouse: $SNOWFLAKE_WAREHOUSE"
   echo "  Database:  $SNOWFLAKE_DATABASE"
   echo "  Role:      $SNOWFLAKE_ROLE"
+  echo ""
+fi
+
+# ── MCP: BigQuery server ─────────────────────────────────────
+if [ -n "$BQ_MCP_CONFIG_PATH" ] && [ -f "$BQ_MCP_CONFIG_PATH" ]; then
+  MCP_JSON=$(echo "$MCP_JSON" | jq \
+    --arg config "$BQ_MCP_CONFIG_PATH" \
+    '.mcpServers["bigquery"] = {
+      "command": "python3",
+      "args": ["/opt/mcp/bigquery/server.py"],
+      "env": {
+        "BQ_MCP_CONFIG_PATH": $config
+      }
+    }')
+  echo "🔌 MCP: bigquery (read + write to configured dataset)"
+
+  # Add BigQuery API domains to firewall allowlist (if not already added by detective)
+  BQ_DOMAINS="bigquery.googleapis.com,storage.googleapis.com,oauth2.googleapis.com"
+  ALL_DOMAINS="$ALL_DOMAINS,$BQ_DOMAINS"
+  BQ_IPS=$(resolve_domains "$BQ_DOMAINS")
+  for ip in $BQ_IPS; do
+    iptables -I OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT 2>/dev/null || true
+    echo "$ip" >> "$ALLOWED_IPS_FILE"
+  done
+  echo "  ✓ BigQuery API domains added to firewall allowlist"
   echo ""
 fi
 

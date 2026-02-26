@@ -1,0 +1,8 @@
+{
+  "auth_mode": "adc",
+  "service_account_key_path": "/opt/secrets/bq-credentials.json",
+  "write_dataset": {
+    "project_id": "my-gcp-project",
+    "dataset_id": "my_writable_dataset"
+  }
+}

@@ -14,6 +14,7 @@ MEMORY_DIR=""
 EXTRA_DOMAINS=""
 SNOWFLAKE_KEY=""
 BQ_CREDENTIALS=""
+BQ_MCP_CONFIG=""
 BUILD=false
 PLAN_FILE=""
 PLAN_MAX_ITERATIONS=""
@@ -33,6 +34,7 @@ Options:
   -a, --allow <domains>    Extra domains to allow (comma-separated)
   --snowflake-key <path>   Snowflake private key PEM file
   --bq-credentials <path>  BigQuery service account JSON key file (override)
+  --bq-mcp-config <path>   BigQuery MCP config JSON file
   --plan <file>            Execute a markdown plan file (task-by-task)
   --plan-max-iter <n>      Max iterations for plan execution (default: 50)
   --plan-retries <n>       Retry count per task (default: 2)
@@ -65,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     -a|--allow)     EXTRA_DOMAINS="$2"; shift 2 ;;
     --snowflake-key) SNOWFLAKE_KEY="$2"; shift 2 ;;
     --bq-credentials) BQ_CREDENTIALS="$2"; shift 2 ;;
+    --bq-mcp-config) BQ_MCP_CONFIG="$2"; shift 2 ;;
     --plan)         PLAN_FILE="$2"; shift 2 ;;
     --plan-max-iter) PLAN_MAX_ITERATIONS="$2"; shift 2 ;;
     --plan-retries) PLAN_RETRY_COUNT="$2"; shift 2 ;;
@@ -233,7 +236,7 @@ if [ -n "$SF_ACCOUNT" ] || [ -n "$BQ_PROJECT" ]; then
 
   # Add BigQuery API domains if BQ is configured
   if [ -n "$BQ_PROJECT" ]; then
-    BQ_DOMAINS="bigquery.googleapis.com,storage.googleapis.com"
+    BQ_DOMAINS="bigquery.googleapis.com,storage.googleapis.com,oauth2.googleapis.com"
     if [ -n "$EXTRA_DOMAINS" ]; then
       EXTRA_DOMAINS="$EXTRA_DOMAINS,$BQ_DOMAINS"
     else
@@ -270,6 +273,55 @@ if [ -n "$SF_ACCOUNT" ] || [ -n "$BQ_PROJECT" ]; then
       MOUNTS+=(-v "$SF_PRIVATE_KEY_PATH:/opt/secrets/sf_key.pem:ro")
       ENV_VARS+=(-e "SF_PRIVATE_KEY_PATH=/opt/secrets/sf_key.pem")
     fi
+  fi
+fi
+
+# ── BigQuery MCP ──────────────────────────────────────────
+# Standalone BigQuery MCP server (separate from Data Detective).
+# Activated by BQ_MCP_CONFIG (path to JSON config file) or --bq-mcp-config flag.
+BQ_MCP_ENABLED=false
+
+# Resolve config file: CLI flag takes precedence over env var
+BQ_MCP_CONFIG_RESOLVED="${BQ_MCP_CONFIG:-${BQ_MCP_CONFIG_PATH:-}}"
+
+if [ -n "$BQ_MCP_CONFIG_RESOLVED" ]; then
+  # Resolve relative to project dir
+  if [[ "$BQ_MCP_CONFIG_RESOLVED" != /* ]]; then
+    BQ_MCP_CONFIG_RESOLVED="$PROJECT_DIR/$BQ_MCP_CONFIG_RESOLVED"
+  fi
+  BQ_MCP_CONFIG_RESOLVED=$(cd "$(dirname "$BQ_MCP_CONFIG_RESOLVED")" && pwd)/$(basename "$BQ_MCP_CONFIG_RESOLVED")
+  if [ ! -f "$BQ_MCP_CONFIG_RESOLVED" ]; then
+    echo "ERROR: BigQuery MCP config not found: $BQ_MCP_CONFIG_RESOLVED"
+    exit 1
+  fi
+  MOUNTS+=(-v "$BQ_MCP_CONFIG_RESOLVED:/opt/secrets/bq-mcp-config.json:ro")
+  ENV_VARS+=(-e "BQ_MCP_CONFIG_PATH=/opt/secrets/bq-mcp-config.json")
+  BQ_MCP_ENABLED=true
+
+  # Add BigQuery API domains to firewall allowlist
+  BQ_MCP_DOMAINS="bigquery.googleapis.com,storage.googleapis.com,oauth2.googleapis.com"
+  if [ -n "$EXTRA_DOMAINS" ]; then
+    EXTRA_DOMAINS="$EXTRA_DOMAINS,$BQ_MCP_DOMAINS"
+  else
+    EXTRA_DOMAINS="$BQ_MCP_DOMAINS"
+  fi
+
+  # If service_account mode, also mount the SA key file referenced in the config
+  SA_KEY_PATH=$(python3 -c "
+import json, sys
+try:
+  c = json.load(open('$BQ_MCP_CONFIG_RESOLVED'))
+  print(c.get('service_account_key_path', ''))
+except:
+  print('')
+" 2>/dev/null || true)
+
+  if [ -n "$SA_KEY_PATH" ] && [ -f "$SA_KEY_PATH" ]; then
+    SA_KEY_PATH=$(cd "$(dirname "$SA_KEY_PATH")" && pwd)/$(basename "$SA_KEY_PATH")
+    MOUNTS+=(-v "$SA_KEY_PATH:/opt/secrets/bq-sa-key.json:ro")
+    echo "  BigQuery SA key: $SA_KEY_PATH → /opt/secrets/bq-sa-key.json"
+  elif [ -n "$SA_KEY_PATH" ] && [ ! -f "$SA_KEY_PATH" ]; then
+    echo "WARNING: BigQuery SA key referenced in config not found: $SA_KEY_PATH"
   fi
 fi
 
@@ -330,6 +382,12 @@ if [ -n "$MEMORY_DIR" ] && [ -d "$MEMORY_DIR" ]; then
 echo "  Memory Tool:"
 echo "     MCP: memory-tool (cognitive memory)"
 echo "     DB: $MEMORY_DIR/chromadb_data"
+echo ""
+fi
+if [ "$BQ_MCP_ENABLED" = true ]; then
+echo "  BigQuery MCP:"
+echo "     MCP: bigquery (read + write to configured dataset)"
+echo "     Config: $BQ_MCP_CONFIG_RESOLVED"
 echo ""
 fi
 if [ "$DETECTIVE_ENABLED" = true ]; then

@@ -16,6 +16,9 @@ RUN pip install --break-system-packages chromadb rank_bm25 networkx
 COPY mcp/ /opt/mcp/
 RUN pip install --break-system-packages -r /opt/mcp/requirements.txt
 
+# MCP server: BigQuery read/write access
+RUN pip install --break-system-packages -r /opt/mcp/bigquery/requirements.txt
+
 # Data Detective: autonomous data anomaly investigation agent
 COPY detective/ /opt/detective/
 RUN pip install --break-system-packages -r /opt/detective/requirements.txt
