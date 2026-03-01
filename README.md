@@ -1,151 +1,151 @@
 # Walter
 
-Docker-sandbox для запуска [Claude Code](https://docs.anthropic.com/en/docs/claude-code) с сетевой изоляцией, защитой от утечки секретов и встроенным агентом для расследования data-аномалий.
+Docker sandbox for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with network isolation, credential leak protection, and a built-in agent for investigating data anomalies.
 
-## Зачем
+## Why
 
-Claude Code получает полный доступ к файлам и терминалу. Walter оборачивает его в контейнер с тремя слоями защиты:
+Claude Code gets full access to files and the terminal. Walter wraps it in a container with three layers of protection:
 
-| Слой | Что делает | От чего защищает |
-|------|-----------|-----------------|
-| **Docker** | Изоляция файловой системы | Доступ к хостовым учётным данным (gcloud, aws, ssh) |
-| **iptables** | Только api.anthropic.com разрешён | Исходящие запросы (boto3, gcloud SDK, curl, утечка данных) |
-| **credential-guard** | Хуки PreToolUse сканируют 40+ паттернов секретов | Запись секретов в файлы проекта |
+| Layer | What it does | Protects against |
+|-------|-------------|-----------------|
+| **Docker** | Filesystem isolation | Access to host credentials (gcloud, aws, ssh) |
+| **iptables** | Only api.anthropic.com allowed | Outbound requests (boto3, gcloud SDK, curl, data exfiltration) |
+| **credential-guard** | PreToolUse hooks scan 40+ secret patterns | Secrets being written to project files |
 
-## Возможности
+## Features
 
-- **Интерактивный режим** — Claude Code внутри песочницы, всё как обычно
-- **Режим промпта** — передать задачу одной командой
-- **Исполнитель планов** — последовательное выполнение задач из markdown-плана
-- **Детектив данных** — автономный агент для расследования аномалий в данных (BigQuery + Snowflake)
-- **MCP-серверы** — только чтение для Snowflake, чтение/запись для BigQuery (с ограничением на один набор данных)
-- **Планнотатор** — веб-интерфейс для ревью и утверждения планов
+- **Interactive mode** — Claude Code inside the sandbox, everything works as usual
+- **Prompt mode** — pass a task in a single command
+- **Plan Executor** — sequential task execution from a markdown plan
+- **Data Detective** — autonomous agent for investigating data anomalies (BigQuery + Snowflake)
+- **MCP servers** — read-only Snowflake, read/write BigQuery (restricted to a single dataset)
+- **Plannotator** — web UI for reviewing and approving plans
 
-## Быстрый старт
+## Quick start
 
 ```bash
-# 1. Клонировать репозиторий
+# 1. Clone the repository
 git clone <repo-url> walter && cd walter
 
-# 2. Сделать скрипты исполняемыми
+# 2. Make scripts executable
 chmod +x walter network-lock.sh hooks/*.sh
 
-# 3. Добавить токен авторизации
+# 3. Add auth token
 echo "CLAUDE_CODE_OAUTH_TOKEN=your-token" > .env
 
-# 4. Собрать образ
+# 4. Build the image
 docker build -t walter:latest .
 
-# 5. Запустить
+# 5. Run
 ./walter -d ./my-project
 ```
 
-## Использование
+## Usage
 
 ```bash
-# Интерактивный режим
+# Interactive mode
 ./walter -d ./my-project
 
-# С промптом
-./walter -d ./my-project "Добавить инкрементальную загрузку таблицы events"
+# With a prompt
+./walter -d ./my-project "Add incremental loading for the events table"
 
-# С инструментом памяти
+# With memory tool
 ./walter -m ~/memory_tool -d ./my-project
 
-# Разрешить дополнительные домены (pip, npm и т.д.)
+# Allow extra domains (pip, npm, etc.)
 ./walter -a "pypi.org,files.pythonhosted.org" -d ./my-project
 
-# Выполнить план
+# Execute a plan
 ./walter --plan docs/plans/my-plan.md -d ./my-project
 
-# Пересобрать образ
+# Rebuild image
 ./walter --build -d ./my-project
 ```
 
-### Опции
+### Options
 
-| Флаг | Описание |
-|------|----------|
-| `-d, --dir <путь>` | Директория проекта (по умолчанию: текущая) |
-| `-m, --memory <путь>` | Директория инструмента памяти для монтирования |
-| `-a, --allow <домены>` | Дополнительные домены через запятую |
-| `--snowflake-key <путь>` | PEM-файл приватного ключа Snowflake |
-| `--bq-credentials <путь>` | JSON-файл сервисного аккаунта BigQuery |
-| `--bq-mcp-config <путь>` | JSON-конфиг BigQuery MCP |
-| `--plan <файл>` | Markdown-файл плана для выполнения |
-| `--plan-max-iter <n>` | Макс. итераций при выполнении плана (по умолчанию: 50) |
-| `--plan-retries <n>` | Количество повторов на задачу (по умолчанию: 2) |
-| `--build` | Пересобрать Docker-образ перед запуском |
+| Flag | Description |
+|------|-------------|
+| `-d, --dir <path>` | Project directory (default: current) |
+| `-m, --memory <path>` | Memory tool directory to mount |
+| `-a, --allow <domains>` | Extra domains, comma-separated |
+| `--snowflake-key <path>` | Snowflake private key PEM file |
+| `--bq-credentials <path>` | BigQuery service account JSON key file |
+| `--bq-mcp-config <path>` | BigQuery MCP config JSON file |
+| `--plan <file>` | Markdown plan file to execute |
+| `--plan-max-iter <n>` | Max iterations for plan execution (default: 50) |
+| `--plan-retries <n>` | Retry count per task (default: 2) |
+| `--build` | Rebuild Docker image before running |
 
-## Архитектура
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Docker-контейнер                                    │
+│  Docker container                                    │
 │                                                      │
 │  ┌─ network-lock.sh ─────────────────────────────┐  │
-│  │ iptables: разрешён api.anthropic.com:443      │  │
-│  │ ip6tables: заблокировано всё                   │  │
-│  │ Фоновое обновление IP каждые 5 мин            │  │
+│  │ iptables: ALLOW api.anthropic.com:443         │  │
+│  │ ip6tables: DROP ALL                            │  │
+│  │ Background IP refresh every 5 min             │  │
 │  └───────────────────────────────────────────────┘  │
 │                                                      │
 │  ┌─ Claude Code ─────────────────────────────────┐  │
-│  │  Хуки (PreToolUse):                            │  │
+│  │  Hooks (PreToolUse):                           │  │
 │  │    credential-guard.sh → scan-credentials.sh   │  │
 │  │    (Write, Edit, Bash)                         │  │
 │  │                                                │  │
-│  │  MCP-серверы:                                  │  │
-│  │    snowflake-readonly (запрос, список, схема)  │  │
-│  │    bigquery (чтение + запись в один набор)     │  │
+│  │  MCP servers:                                  │  │
+│  │    snowflake-readonly (query, list, describe)  │  │
+│  │    bigquery (read + write to one dataset)      │  │
 │  │                                                │  │
-│  │  Агенты:                                       │  │
-│  │    Детектив данных (расследование аномалий)    │  │
+│  │  Agents:                                       │  │
+│  │    Data Detective (anomaly investigation)      │  │
 │  └───────────────────────────────────────────────┘  │
 │                                                      │
-│  /workspace  ← директория проекта (чтение/запись)   │
-│  НЕТ: gcloud, aws, ssh, файловая система хоста      │
+│  /workspace  ← project directory (rw)               │
+│  NO: gcloud, aws, ssh, host filesystem              │
 └─────────────────────────────────────────────────────┘
 ```
 
-## Структура проекта
+## Project structure
 
 ```
 walter/
-├── walter                  # Главный лаунчер (оркестрация Docker)
-├── network-lock.sh         # Сетевой файрвол (точка входа контейнера)
-├── plan-executor.sh        # Исполнитель markdown-планов
+├── walter                  # Main launcher (Docker orchestration)
+├── network-lock.sh         # Network firewall (container entrypoint)
+├── plan-executor.sh        # Markdown plan executor
 ├── Dockerfile
-├── .env                    # Токен авторизации (не в git)
+├── .env                    # Auth token (not in git)
 │
-├── hooks/                  # Защита от утечки секретов (нативные хуки Claude Code)
-│   ├── settings.json       # Конфигурация хуков
-│   ├── credential-guard.sh # Обработчик PreToolUse
-│   └── scan-credentials.sh # Сканер секретов (40+ regex-паттернов)
+├── hooks/                  # Credential guard (native Claude Code hooks)
+│   ├── settings.json       # Hook configuration
+│   ├── credential-guard.sh # PreToolUse handler
+│   └── scan-credentials.sh # Secret scanner (40+ regex patterns)
 │
-├── detective/              # Детектив данных — агент расследования аномалий
-│   ├── detective_core.py   # Цикл расследования + SQL-исполнитель
-│   ├── mcp_server.py       # MCP-сервер для Детектива данных
-│   ├── connectors.py       # Коннекторы BigQuery и Snowflake
-│   └── data-detective.md   # Определение агента для Claude Code
+├── detective/              # Data Detective — anomaly investigation agent
+│   ├── detective_core.py   # Investigation loop + SQL executor
+│   ├── mcp_server.py       # MCP server for Data Detective
+│   ├── connectors.py       # BigQuery and Snowflake connectors
+│   └── data-detective.md   # Agent definition for Claude Code
 │
-├── mcp/                    # MCP-серверы
-│   ├── sql_utils.py        # Общие утилиты (markdown-таблицы, SQL-валидация)
-│   ├── snowflake-readonly.py # Snowflake MCP (только чтение)
+├── mcp/                    # MCP servers
+│   ├── sql_utils.py        # Shared utilities (markdown tables, SQL validation)
+│   ├── snowflake-readonly.py # Read-only Snowflake MCP
 │   └── bigquery/
-│       └── server.py       # BigQuery MCP (чтение + ограниченная запись)
+│       └── server.py       # BigQuery MCP (read + restricted write)
 │
-├── plannotator/            # Веб-интерфейс для ревью планов
-│   ├── server.js           # HTTP-сервер
-│   ├── ui.html             # Интерфейс
-│   └── hook.sh             # Хук для запроса разрешений
+├── plannotator/            # Web UI for plan review
+│   ├── server.js           # HTTP server
+│   ├── ui.html             # UI
+│   └── hook.sh             # Permission request hook
 │
 └── docs/plans/
-    └── TEMPLATE.md         # Шаблон плана
+    └── TEMPLATE.md         # Plan template
 ```
 
-## Настройка Детектива данных
+## Data Detective setup
 
-Для работы Детектива данных добавьте переменные в `.env` вашего проекта:
+To use Data Detective, add these variables to your project's `.env`:
 
 ```bash
 # BigQuery
@@ -160,25 +160,25 @@ SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_DATABASE=MY_DB
 SNOWFLAKE_ROLE=ANALYST
 
-# Настройки агента (необязательно)
+# Agent settings (optional)
 DETECTIVE_MODEL=claude-sonnet-4-20250514
 DETECTIVE_MAX_ITER=15
 ```
 
-## Требования
+## Requirements
 
 - Docker Desktop (macOS / Linux / Windows WSL)
-- Токен Claude Code (OAuth или API-ключ)
+- Claude Code auth token (OAuth or API key)
 
-## Решение проблем
+## Troubleshooting
 
-| Проблема | Решение |
-|----------|---------|
-| `api.anthropic.com — FAILED` при старте | DNS не работает в контейнере: `docker run --rm alpine nslookup api.anthropic.com` |
-| Claude Code не авторизован | Проверьте `CLAUDE_CODE_OAUTH_TOKEN` в `.env` или `ANTHROPIC_API_KEY` |
-| Задача зависла | Ctrl+C останавливает контейнер; изменения сохраняются в директории проекта |
-| Ложное срабатывание защиты секретов | Добавьте паттерн в `ALLOWLIST_PATTERNS` в `hooks/scan-credentials.sh` |
+| Problem | Solution |
+|---------|----------|
+| `api.anthropic.com — FAILED` on startup | DNS not working in container: `docker run --rm alpine nslookup api.anthropic.com` |
+| Claude Code not authorized | Check `CLAUDE_CODE_OAUTH_TOKEN` in `.env` or `ANTHROPIC_API_KEY` |
+| Task stuck | Ctrl+C stops the container; changes are preserved in the project directory |
+| Credential guard false positive | Add pattern to `ALLOWLIST_PATTERNS` in `hooks/scan-credentials.sh` |
 
-## Лицензия
+## License
 
 MIT
