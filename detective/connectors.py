@@ -5,6 +5,7 @@ connectors.py — connectors for BigQuery and Snowflake
 from dataclasses import dataclass, field
 from typing import Optional
 import os
+import re
 
 
 @dataclass
@@ -60,6 +61,11 @@ class BigQueryConnector:
         except Exception as e:
             return QueryResult(error=str(e))
 
+    @staticmethod
+    def _validate_identifier(name: str) -> bool:
+        """Check that a name is a safe SQL identifier (alphanumeric + underscores/hyphens)."""
+        return bool(re.match(r'^[a-zA-Z0-9_\-]+$', name))
+
     def get_schema(self, table: str) -> QueryResult:
         # Parse the table reference
         parts = table.split(".")
@@ -70,6 +76,9 @@ class BigQueryConnector:
             project, dataset, table_name = parts
         else:
             return QueryResult(error=f"Invalid table format: {table}")
+
+        if not all(self._validate_identifier(p) for p in [project, dataset, table_name]):
+            return QueryResult(error=f"Invalid characters in table reference: {table}")
 
         sql = f"""
             SELECT
@@ -91,6 +100,14 @@ class BigQueryConnector:
             project = self.project
             ds = dataset
 
+        if not all(self._validate_identifier(p) for p in [project, ds]):
+            return QueryResult(error=f"Invalid characters in dataset reference: {dataset}")
+
+        filter_clause = ""
+        if filter_str:
+            safe_filter = filter_str.lower().replace("'", "''")
+            filter_clause = f"AND LOWER(table_name) LIKE '%{safe_filter}%'"
+
         sql = f"""
             SELECT
                 table_name,
@@ -98,9 +115,9 @@ class BigQueryConnector:
                 creation_time,
                 row_count,
                 size_bytes
-            FROM `{project}.{ds}.INFORMATION_SCHEMA.TABLE_OPTIONS`
+            FROM `{project}.{ds}.INFORMATION_SCHEMA.TABLES`
             WHERE 1=1
-            {'AND LOWER(table_name) LIKE ' + repr(f'%{filter_str.lower()}%') if filter_str else ''}
+            {filter_clause}
             ORDER BY table_name
         """
         return self.execute(sql)
@@ -194,17 +211,33 @@ class SnowflakeConnector:
             self._connection = None
             return QueryResult(error=str(e))
 
+    @staticmethod
+    def _validate_identifier(name: str) -> bool:
+        """Check that a name is a safe SQL identifier (alphanumeric + underscores)."""
+        return bool(re.match(r'^[a-zA-Z0-9_]+$', name))
+
     def get_schema(self, table: str) -> QueryResult:
         parts = table.split(".")
         if len(parts) == 2:
             schema_name, table_name = parts
-            db_filter = f"AND TABLE_SCHEMA = '{schema_name.upper()}'" if schema_name else ""
         elif len(parts) == 3:
             db_name, schema_name, table_name = parts
-            db_filter = f"AND TABLE_CATALOG = '{db_name.upper()}' AND TABLE_SCHEMA = '{schema_name.upper()}'"
         else:
             table_name = table
-            db_filter = ""
+            schema_name = None
+
+        if not self._validate_identifier(table_name):
+            return QueryResult(error=f"Invalid table name: {table_name}")
+
+        db_filter = ""
+        if len(parts) == 2 and schema_name:
+            if not self._validate_identifier(schema_name):
+                return QueryResult(error=f"Invalid schema name: {schema_name}")
+            db_filter = f"AND TABLE_SCHEMA = '{schema_name.upper()}'"
+        elif len(parts) == 3:
+            if not all(self._validate_identifier(p) for p in [db_name, schema_name]):
+                return QueryResult(error=f"Invalid identifier in: {table}")
+            db_filter = f"AND TABLE_CATALOG = '{db_name.upper()}' AND TABLE_SCHEMA = '{schema_name.upper()}'"
 
         sql = f"""
             SELECT
@@ -225,7 +258,20 @@ class SnowflakeConnector:
     def list_tables(self, dataset: str, filter_str: str = None) -> QueryResult:
         parts = dataset.split(".")
         schema_name = parts[-1]
-        db_clause = f"AND TABLE_CATALOG = '{parts[0].upper()}'" if len(parts) > 1 else ""
+
+        if not self._validate_identifier(schema_name):
+            return QueryResult(error=f"Invalid schema name: {schema_name}")
+
+        db_clause = ""
+        if len(parts) > 1:
+            if not self._validate_identifier(parts[0]):
+                return QueryResult(error=f"Invalid database name: {parts[0]}")
+            db_clause = f"AND TABLE_CATALOG = '{parts[0].upper()}'"
+
+        filter_clause = ""
+        if filter_str:
+            safe_filter = filter_str.lower().replace("'", "''")
+            filter_clause = f"AND LOWER(TABLE_NAME) LIKE '%{safe_filter}%'"
 
         sql = f"""
             SELECT
@@ -238,7 +284,7 @@ class SnowflakeConnector:
             FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = '{schema_name.upper()}'
             {db_clause}
-            {'AND LOWER(TABLE_NAME) LIKE ' + repr(f'%{filter_str.lower()}%') if filter_str else ''}
+            {filter_clause}
             ORDER BY TABLE_NAME
         """
         return self.execute(sql)

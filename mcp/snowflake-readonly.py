@@ -13,9 +13,13 @@ SQL validation: only SELECT, SHOW, DESCRIBE, WITH, EXPLAIN are allowed.
 
 import os
 import re
+import sys
 
 import snowflake.connector
 from mcp.server.fastmcp import FastMCP
+
+sys.path.insert(0, os.path.dirname(__file__))
+from sql_utils import strip_sql_comments, validate_identifier, to_markdown_table
 
 # ── Config from env ──────────────────────────────────────────
 
@@ -39,11 +43,8 @@ DANGEROUS_KEYWORDS = (
 
 # ── SQL validation ───────────────────────────────────────────
 
-def _strip_sql_comments(sql: str) -> str:
-    """Remove -- line comments and /* block comments */."""
-    sql = re.sub(r"--[^\n]*", "", sql)
-    sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
-    return sql
+_strip_sql_comments = strip_sql_comments
+_validate_identifier = validate_identifier
 
 
 def validate_sql(sql: str) -> str | None:
@@ -99,27 +100,7 @@ def _get_connection():
     )
 
 
-# ── Markdown formatter ───────────────────────────────────────
-
-def _to_markdown_table(columns: list[str], rows: list[tuple]) -> str:
-    if not rows:
-        return "_No results_"
-
-    col_names = [str(c) for c in columns]
-    str_rows = [[str(v) for v in row] for row in rows]
-
-    widths = [len(c) for c in col_names]
-    for row in str_rows:
-        for i, val in enumerate(row):
-            widths[i] = max(widths[i], len(val))
-
-    def fmt_row(vals):
-        return "| " + " | ".join(v.ljust(w) for v, w in zip(vals, widths)) + " |"
-
-    header = fmt_row(col_names)
-    sep = "| " + " | ".join("-" * w for w in widths) + " |"
-    body = "\n".join(fmt_row(r) for r in str_rows)
-    return f"{header}\n{sep}\n{body}"
+_to_markdown_table = to_markdown_table
 
 
 # ── MCP Server ───────────────────────────────────────────────
@@ -188,9 +169,8 @@ def list_tables(schema: str) -> str:
     Args:
         schema: The schema name (e.g. 'PUBLIC', 'RAW').
     """
-    error = validate_sql(f"SHOW TABLES IN SCHEMA {schema}")
-    if error:
-        return f"**Error**: {error}"
+    if not _validate_identifier(schema):
+        return "**Error**: Invalid schema name (must be alphanumeric/underscores)"
 
     conn = _get_connection()
     try:
@@ -217,9 +197,8 @@ def describe_table(schema: str, table: str) -> str:
         schema: The schema name (e.g. 'PUBLIC').
         table: The table name (e.g. 'EVENTS').
     """
-    error = validate_sql(f"DESCRIBE TABLE {schema}.{table}")
-    if error:
-        return f"**Error**: {error}"
+    if not _validate_identifier(schema) or not _validate_identifier(table):
+        return "**Error**: Invalid schema or table name (must be alphanumeric/underscores)"
 
     conn = _get_connection()
     try:

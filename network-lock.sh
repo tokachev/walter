@@ -211,7 +211,7 @@ echo ""
 # ── Auth diagnostics ──────────────────────────────────────────
 echo "🔑 Auth check:"
 if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-  echo "  ✓ CLAUDE_CODE_OAUTH_TOKEN is set (${CLAUDE_CODE_OAUTH_TOKEN:0:15}...)"
+  echo "  ✓ CLAUDE_CODE_OAUTH_TOKEN is set (${CLAUDE_CODE_OAUTH_TOKEN:0:4}...)"
 elif [ -n "$ANTHROPIC_API_KEY" ]; then
   echo "  ✓ ANTHROPIC_API_KEY is set (${ANTHROPIC_API_KEY:0:10}...)"
 else
