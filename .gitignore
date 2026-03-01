@@ -2,6 +2,8 @@
 *.pem
 *.json.key
 node_modules/
+__pycache__/
+*.pyc
 
 # Claude Code local state
 .claude/settings.local.json
