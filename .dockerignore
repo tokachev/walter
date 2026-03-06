@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+*.pem
+*.key
+node_modules
+__pycache__
+*.pyc
+.claude
+docs
+SETUP.md
+.dockerignore

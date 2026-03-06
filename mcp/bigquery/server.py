@@ -20,6 +20,7 @@ Write-restricted tools (target must match configured write_dataset):
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -27,17 +28,28 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from mcp.server.fastmcp import FastMCP
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from sql_utils import strip_sql_comments as _shared_strip, validate_identifier as _shared_validate, to_markdown_table as _shared_markdown
+
 # ── Constants ────────────────────────────────────────────────
 
 ROW_LIMIT = 1000
 
 # ── Config helpers ───────────────────────────────────────────
 
+_cached_config = None
+_cached_client = None
+
+
 def _load_config() -> dict:
-    """Load JSON config from BQ_MCP_CONFIG_PATH."""
+    """Load JSON config from BQ_MCP_CONFIG_PATH (cached after first read)."""
+    global _cached_config
+    if _cached_config is not None:
+        return _cached_config
     path = os.environ.get("BQ_MCP_CONFIG_PATH", "/opt/mcp/bigquery/config.json")
     try:
-        return json.loads(Path(path).read_text())
+        _cached_config = json.loads(Path(path).read_text())
+        return _cached_config
     except FileNotFoundError:
         raise RuntimeError(f"BigQuery MCP config not found: {path}")
     except json.JSONDecodeError as e:
@@ -45,12 +57,16 @@ def _load_config() -> dict:
 
 
 def _get_client() -> bigquery.Client:
-    """Build a BigQuery client based on auth_mode in config."""
+    """Build a BigQuery client based on auth_mode in config (cached after first call)."""
+    global _cached_client
+    if _cached_client is not None:
+        return _cached_client
     config = _load_config()
     mode = config.get("auth_mode", "adc")
 
     if mode == "adc":
-        return bigquery.Client()
+        _cached_client = bigquery.Client()
+        return _cached_client
 
     if mode == "service_account":
         key_path = config.get("service_account_key_path", "")
@@ -66,7 +82,8 @@ def _get_client() -> bigquery.Client:
         creds = service_account.Credentials.from_service_account_file(
             key_path, scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
-        return bigquery.Client(credentials=creds)
+        _cached_client = bigquery.Client(credentials=creds)
+        return _cached_client
 
     raise ValueError(f"Unknown auth_mode: {mode}")
 
@@ -90,11 +107,8 @@ def _is_write_allowed(target_project: str, target_dataset: str) -> bool:
 
 # ── SQL helpers ──────────────────────────────────────────────
 
-def _strip_sql_comments(sql: str) -> str:
-    """Remove -- line comments and /* block comments */."""
-    sql = re.sub(r"--[^\n]*", "", sql)
-    sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
-    return sql
+_strip_sql_comments = _shared_strip
+_validate_identifier = _shared_validate
 
 
 _WRITE_TARGET_RE = re.compile(
@@ -126,28 +140,7 @@ def _parse_write_target(sql: str) -> tuple[str, str] | None:
     return None
 
 
-# ── Markdown formatter ───────────────────────────────────────
-
-def _to_markdown_table(columns: list[str], rows: list[Any]) -> str:
-    """Format query results as a markdown table."""
-    if not rows:
-        return "_No results_"
-
-    col_names = [str(c) for c in columns]
-    str_rows = [[str(v) for v in row] for row in rows]
-
-    widths = [len(c) for c in col_names]
-    for row in str_rows:
-        for i, val in enumerate(row):
-            widths[i] = max(widths[i], len(val))
-
-    def fmt_row(vals):
-        return "| " + " | ".join(v.ljust(w) for v, w in zip(vals, widths)) + " |"
-
-    header = fmt_row(col_names)
-    sep = "| " + " | ".join("-" * w for w in widths) + " |"
-    body = "\n".join(fmt_row(r) for r in str_rows)
-    return f"{header}\n{sep}\n{body}"
+_to_markdown_table = _shared_markdown
 
 
 # ── MCP Server ───────────────────────────────────────────────
@@ -377,6 +370,8 @@ def create_or_replace_table_as(
             f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
             f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
         )
+    if not all(_validate_identifier(n) for n in [project_id, dataset_id, table_id]):
+        return "**Error**: Invalid characters in project/dataset/table identifiers."
     try:
         client = _get_client()
         sql = f"CREATE OR REPLACE TABLE `{project_id}.{dataset_id}.{table_id}` AS {select_sql}"
