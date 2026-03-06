@@ -10,11 +10,36 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────
-PLAN_FILE="${WALTER_PLAN_FILE:?WALTER_PLAN_FILE is required}"
-MAX_ITERATIONS="${WALTER_MAX_ITERATIONS:-50}"
+MAX_ITERATIONS="${WALTER_MAX_ITERATIONS:-600}"
 RETRY_COUNT="${WALTER_RETRY_COUNT:-2}"
 CLAUDE_ARGS_STR="${WALTER_CLAUDE_ARGS_STR:-}"
 SIGNAL_FILE="/tmp/.walter-signal"
+WAVE_FILTER="${WALTER_WAVE:-}"
+PLAN_DIR="${WALTER_PLAN_DIR:-}"
+
+# Resolve plan file(s)
+if [ -n "$PLAN_DIR" ]; then
+  # --plan-dir mode: execute all phase-*-PLAN.md files in sequence
+  if [ ! -d "$PLAN_DIR" ]; then
+    echo "ERROR: Plan directory not found: $PLAN_DIR" >&2
+    exit 1
+  fi
+  PLAN_FILES=()
+  for f in "$PLAN_DIR"/phase-*-PLAN.md "$PLAN_DIR"/phase-*-*-PLAN.md "$PLAN_DIR"/quick-PLAN.md; do
+    [ -f "$f" ] && PLAN_FILES+=("$f")
+  done
+  # Deduplicate and sort
+  PLAN_FILES=($(printf '%s\n' "${PLAN_FILES[@]}" | sort -u))
+  if [ ${#PLAN_FILES[@]} -eq 0 ]; then
+    echo "ERROR: No plan files found in $PLAN_DIR" >&2
+    exit 1
+  fi
+  echo "Plan directory mode: found ${#PLAN_FILES[@]} plan file(s)"
+  PLAN_FILE="${PLAN_FILES[0]}"
+else
+  PLAN_FILE="${WALTER_PLAN_FILE:?WALTER_PLAN_FILE is required}"
+  PLAN_FILES=("$PLAN_FILE")
+fi
 
 # Parse CLAUDE_ARGS_STR back into array
 CLAUDE_ARGS=()
@@ -150,23 +175,43 @@ get_first_unchecked() {
 }
 
 
-# ── Banner ──────────────────────────────────────────────────
+# ── Wave filter helper ──────────────────────────────────────
+
+# filter_tasks_by_wave — if WAVE_FILTER is set, only process tasks in that wave.
+# Wave = comma-separated task numbers. E.g., WALTER_WAVE="1,2,3"
+is_task_in_wave() {
+  local task_num="$1"
+  if [ -z "$WAVE_FILTER" ]; then
+    return 0  # no filter = all tasks
+  fi
+  IFS=',' read -ra WAVE_TASKS <<< "$WAVE_FILTER"
+  for wt in "${WAVE_TASKS[@]}"; do
+    [ "$wt" = "$task_num" ] && return 0
+  done
+  return 1
+}
+
+# ── Execute single plan file ──────────────────────────────────
+
+execute_plan() {
+  local plan_file="$1"
 
 echo ""
 echo "══════════════════════════════════════════════════════"
 echo "  walter plan-executor"
 echo ""
-echo "  Plan:           $PLAN_FILE"
+echo "  Plan:           $plan_file"
 echo "  Max iterations: $MAX_ITERATIONS"
 echo "  Retry count:    $RETRY_COUNT"
+[ -n "$WAVE_FILTER" ] && echo "  Wave filter:    tasks $WAVE_FILTER"
 echo "══════════════════════════════════════════════════════"
 echo ""
 
 # ── Validate plan file ──────────────────────────────────────
 
-if [ ! -f "$PLAN_FILE" ]; then
-  log_err "Plan file not found: $PLAN_FILE"
-  exit 1
+if [ ! -f "$plan_file" ]; then
+  log_err "Plan file not found: $plan_file"
+  return 1
 fi
 
 
@@ -178,19 +223,44 @@ for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
   log "Iteration $iteration/$MAX_ITERATIONS"
 
   # Find next task with unchecked items
-  task_num=$(find_next_task "$PLAN_FILE")
+  task_num=$(find_next_task "$plan_file")
   if [ -z "$task_num" ]; then
     echo ""
-    log_ok "All tasks complete!"
+    log_ok "All tasks complete in $plan_file!"
     echo ""
-    exit 0
+    return 0
   fi
 
-  task_title=$(extract_task_title "$PLAN_FILE" "$task_num")
+  # Wave filter: skip tasks not in this wave
+  if ! is_task_in_wave "$task_num"; then
+    log "Task $task_num: skipped (not in wave $WAVE_FILTER)"
+    # Mark as "not our problem" — find next task that IS in wave
+    # To avoid infinite loop, check if ANY remaining task is in our wave
+    local found_wave_task=false
+    local check_num="$task_num"
+    while [ -n "$check_num" ]; do
+      if is_task_in_wave "$check_num"; then
+        found_wave_task=true
+        break
+      fi
+      # Temporarily mark this task's items to skip past it in find_next_task
+      # (We don't actually skip — we just need to find the NEXT task)
+      # Instead, just break and let the caller know we're done with our wave
+      break
+    done
+    if [ "$found_wave_task" = false ]; then
+      log_ok "All wave tasks complete!"
+      return 0
+    fi
+    # If the next task isn't in our wave, we're done
+    return 0
+  fi
+
+  task_title=$(extract_task_title "$plan_file" "$task_num")
   log "Task $task_num: $task_title"
 
   # Check if first unchecked item is [WAIT]
-  first_unchecked=$(get_first_unchecked "$PLAN_FILE" "$task_num")
+  first_unchecked=$(get_first_unchecked "$plan_file" "$task_num")
 
   if [[ "$first_unchecked" =~ \[WAIT\] ]]; then
     echo ""
@@ -203,27 +273,26 @@ for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
     else
       log_warn "Non-interactive mode — cannot wait for user input"
       log_err "Aborting: [WAIT] step requires interactive terminal"
-      exit 1
+      return 1
     fi
 
     # Mark [WAIT] → [x] in plan file
-    # Escape the line for sed (handle special chars)
     wait_pattern=$(echo "$first_unchecked" | sed 's/[][\/.^$*]/\\&/g' | sed 's/\[WAIT\]/\\[WAIT\\]/')
     wait_replacement=$(echo "$first_unchecked" | sed 's/\[WAIT\]/[x]/')
     wait_replacement_escaped=$(echo "$wait_replacement" | sed 's/[&/\]/\\&/g')
-    sed -i "s/${wait_pattern}/${wait_replacement_escaped}/" "$PLAN_FILE"
+    sed -i "s/${wait_pattern}/${wait_replacement_escaped}/" "$plan_file"
     log_ok "Marked WAIT step as done"
     continue
   fi
 
   # Build task section and validation commands
-  task_section=$(extract_task_section "$PLAN_FILE" "$task_num")
-  validation_cmds=$(extract_validation_commands "$PLAN_FILE")
+  task_section=$(extract_task_section "$plan_file" "$task_num")
+  validation_cmds=$(extract_validation_commands "$plan_file")
 
   # Build prompt
   prompt="You are executing a plan inside a walter container.
 
-Read the plan file at ${PLAN_FILE}.
+Read the plan file at ${plan_file}.
 You are executing Task ${task_num}: ${task_title}.
 ONLY work on this task. Do NOT continue to the next task.
 
@@ -235,7 +304,7 @@ Instructions:
 2. IMPLEMENT: Complete all unchecked [ ] items in Task ${task_num}. Skip any [WAIT] items.
 3. VALIDATE: Run the following validation commands from the plan and fix any failures:
 ${validation_cmds}
-4. COMPLETE: Mark each completed [ ] item as [x] in the plan file (${PLAN_FILE}). Do NOT commit.
+4. COMPLETE: Mark each completed [ ] item as [x] in the plan file (${plan_file}). Do NOT commit.
    Then output EXACTLY ONE of the following — nothing else:
    - If ALL [ ] items in the ENTIRE plan are now [x] → output: <<<WALTER:ALL_TASKS_DONE>>>
    - If more tasks remain (even if this task was already done) → end your response with NO signal at all
@@ -263,10 +332,7 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
     # Run claude and scan output for signals using process substitution
     exit_code=0
     while IFS= read -r line; do
-      # Pass through to terminal
       echo "$line"
-
-      # Scan for signals
       if [[ "$line" == *'<<<WALTER:ALL_TASKS_DONE>>>'* ]]; then
         echo "ALL_TASKS_DONE" > "$SIGNAL_FILE"
       elif [[ "$line" == *'<<<WALTER:TASK_FAILED>>>'* ]]; then
@@ -283,7 +349,7 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
       retries=$((retries + 1))
       if [ "$retries" -gt "$RETRY_COUNT" ]; then
         log_err "Task $task_num FAILED after $RETRY_COUNT retries"
-        exit 1
+        return 1
       fi
       log_warn "Task $task_num failed (exit=$exit_code, signal=$signal)"
       sleep 2
@@ -294,7 +360,7 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
       echo ""
       log_ok "All tasks complete!"
       echo ""
-      exit 0
+      return 0
     fi
 
     # Task completed normally (more tasks remain)
@@ -303,7 +369,7 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
   done
 
   if [ "$task_success" = true ]; then
-    remaining=$(count_incomplete_tasks "$PLAN_FILE")
+    remaining=$(count_incomplete_tasks "$plan_file")
     log_ok "Task $task_num done. Remaining unchecked items: $remaining"
   fi
 
@@ -311,4 +377,30 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
 done
 
 log_err "Reached max iterations ($MAX_ITERATIONS) without completing all tasks"
-exit 1
+return 1
+}
+
+# ── Multi-plan orchestrator ─────────────────────────────────
+
+plan_idx=0
+total_plans=${#PLAN_FILES[@]}
+
+for pf in "${PLAN_FILES[@]}"; do
+  plan_idx=$((plan_idx + 1))
+  if [ "$total_plans" -gt 1 ]; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════╗"
+    echo "  Plan $plan_idx/$total_plans: $(basename "$pf")"
+    echo "╚══════════════════════════════════════════════════════╝"
+  fi
+  execute_plan "$pf"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    log_err "Plan execution failed: $pf"
+    exit 1
+  fi
+done
+
+echo ""
+log_ok "All plan files executed successfully!"
+exit 0

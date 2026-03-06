@@ -36,7 +36,7 @@ Options:
   --bq-credentials <path>  BigQuery service account JSON key file (override)
   --bq-mcp-config <path>   BigQuery MCP config JSON file
   --plan <file>            Execute a markdown plan file (task-by-task)
-  --plan-max-iter <n>      Max iterations for plan execution (default: 50)
+  --plan-max-iter <n>      Max iterations for plan execution (default: 600)
   --plan-retries <n>       Retry count per task (default: 2)
   --build                  Rebuild Docker image
   -h, --help               Show this help
@@ -47,6 +47,7 @@ Project credentials from <project>/.env:
   SNOWFLAKE_*              — Snowflake read-only MCP + auto-mapped to SF_* for Detective
   BQ_PROJECT, BQ_CREDENTIALS_PATH — BigQuery (Data Detective)
   SF_*                     — Snowflake (Data Detective, explicit override)
+  OPENAI_API_KEY           — Codex peer review (/peer-review command)
 
 Examples:
   walter -d ./my-project                    # all from .env
@@ -137,12 +138,36 @@ if [ -f "$CLAUDE_HOME/settings.json" ]; then
   MOUNTS+=(-v "$CLAUDE_HOME/settings.json:/tmp/host-settings.json:ro")
 fi
 
+if [ -f "$CLAUDE_HOME/CLAUDE.md" ]; then
+  MOUNTS+=(-v "$CLAUDE_HOME/CLAUDE.md:/opt/claude-home/.claude/CLAUDE.md:ro")
+fi
+
+if [ -d "$CLAUDE_HOME/rules" ]; then
+  MOUNTS+=(-v "$CLAUDE_HOME/rules:/opt/claude-home/.claude/rules:ro")
+fi
+
+if [ -d "$CLAUDE_HOME/commands" ]; then
+  MOUNTS+=(-v "$CLAUDE_HOME/commands:/opt/claude-home/.claude/commands:ro")
+fi
+
+if [ -d "$CLAUDE_HOME/skills" ]; then
+  MOUNTS+=(-v "$CLAUDE_HOME/skills:/opt/claude-home/.claude/skills:ro")
+fi
+
+# Persist session data for Insights: mount ~/.claude/projects so all
+# Walter sessions are visible to the host's `claude insights` command
+PROJECTS_DIR="$CLAUDE_HOME/projects"
+mkdir -p "$PROJECTS_DIR"
+MOUNTS+=(-v "$PROJECTS_DIR:/opt/claude-home/.claude/projects")
+
 # ── Auth (from walter .env) ───────────────────────────────────
 ENV_VARS=(
   # Disable telemetry/analytics (segment.io, growthbook.io, datadoghq.com)
   # These services are blocked by the firewall; without this flag Claude Code
   # attempts connections that hang until TCP timeout, adding minutes of latency.
   -e "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+  # Default to Opus
+  -e "ANTHROPIC_MODEL=claude-opus-4-6"
 )
 
 if [ -f "$SCRIPT_DIR/.env" ]; then
@@ -163,6 +188,29 @@ if [ -f "$PROJECT_DIR/.env" ]; then
   set -a
   source "$PROJECT_DIR/.env"
   set +a
+fi
+
+# ── OpenAI / Codex (peer review) ──────────────────────────────
+CODEX_ENABLED=false
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+
+if [ -f "$CODEX_HOME/auth.json" ]; then
+  MOUNTS+=(-v "$CODEX_HOME/auth.json:/opt/claude-home/.codex/auth.json:ro")
+  CODEX_ENABLED=true
+fi
+
+if [ -n "$OPENAI_API_KEY" ]; then
+  ENV_VARS+=(-e "OPENAI_API_KEY=$OPENAI_API_KEY")
+  CODEX_ENABLED=true
+fi
+
+if [ "$CODEX_ENABLED" = true ]; then
+  CODEX_DOMAINS="api.openai.com,chatgpt.com"
+  if [ -n "$EXTRA_DOMAINS" ]; then
+    EXTRA_DOMAINS="$EXTRA_DOMAINS,$CODEX_DOMAINS"
+  else
+    EXTRA_DOMAINS="$CODEX_DOMAINS"
+  fi
 fi
 
 # ── Snowflake (read-only MCP) ─────────────────────────────────
@@ -369,6 +417,8 @@ echo "     api.anthropic.com, console.anthropic.com, claude.ai"
 echo "     everything else blocked (IPv4 + IPv6)"
 echo ""
 echo "  Agents:    $([ -d "$CLAUDE_HOME/agents" ] && echo "mounted from $CLAUDE_HOME/agents" || echo "not found")"
+echo "  Commands:  $([ -d "$CLAUDE_HOME/commands" ] && echo "mounted from $CLAUDE_HOME/commands" || echo "not found")"
+echo "  Skills:    $([ -d "$CLAUDE_HOME/skills" ] && echo "mounted from $CLAUDE_HOME/skills" || echo "not found")"
 echo "  Settings:  $([ -f "$CLAUDE_HOME/settings.json" ] && echo "merged from host" || echo "container defaults")"
 echo ""
 if [ "$SNOWFLAKE_ENABLED" = true ]; then
@@ -388,6 +438,13 @@ if [ "$BQ_MCP_ENABLED" = true ]; then
 echo "  BigQuery MCP:"
 echo "     MCP: bigquery (read + write to configured dataset)"
 echo "     Config: $BQ_MCP_CONFIG_RESOLVED"
+echo ""
+fi
+if [ "$CODEX_ENABLED" = true ]; then
+echo "  Peer Review:"
+echo "     Codex CLI (OpenAI) — /peer-review command"
+[ -f "$CODEX_HOME/auth.json" ] && echo "     Auth: $CODEX_HOME/auth.json"
+[ -n "$OPENAI_API_KEY" ] && echo "     Auth: OPENAI_API_KEY"
 echo ""
 fi
 if [ "$DETECTIVE_ENABLED" = true ]; then

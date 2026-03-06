@@ -394,13 +394,18 @@ if [ "$HAS_MCP" -gt 0 ]; then
   MCP_ARGS=(--mcp-config "$MCP_CONFIG")
 fi
 
-# ── Ensure built-in agents survive host agents mount ─────────
-# If host mounted ~/.claude/agents (read-only), it shadows the Dockerfile
-# agents. Copy built-in agents into a writable merged dir and point HOME there.
+# ── Ensure built-in files survive host mounts ─────────────────
+# If host mounted ~/.claude/agents or ~/.claude/commands (read-only),
+# they shadow the Dockerfile copies. Merge built-in files into a writable dir.
 AGENTS_DIR="$HOME/.claude/agents"
+COMMANDS_DIR="$HOME/.claude/commands"
 BUILTIN_AGENTS_DIR="/opt/detective"
+BUILTIN_COMMANDS_DIR="/opt/gsd/commands"
+BUILTIN_GSD_AGENTS="/opt/gsd/agents"
+BUILTIN_ROOT_COMMANDS="/opt/commands"
 NEEDS_MERGE=false
 
+# Check if built-in agents need merging
 if [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_DIR" ]; then
   for f in "$BUILTIN_AGENTS_DIR"/*.md; do
     [ -f "$f" ] || continue
@@ -412,19 +417,87 @@ if [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_DIR" ]; then
   done
 fi
 
+# Check if built-in GSD agents need merging
+if [ "$NEEDS_MERGE" != true ] && [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_GSD_AGENTS" ]; then
+  for f in "$BUILTIN_GSD_AGENTS"/*.md; do
+    [ -f "$f" ] || continue
+    fname=$(basename "$f")
+    if [ ! -f "$AGENTS_DIR/$fname" ]; then
+      NEEDS_MERGE=true
+      break
+    fi
+  done
+fi
+
+# Check if built-in GSD commands need merging
+if [ "$NEEDS_MERGE" != true ] && [ -d "$COMMANDS_DIR" ] && [ -d "$BUILTIN_COMMANDS_DIR" ]; then
+  for f in "$BUILTIN_COMMANDS_DIR"/*.md; do
+    [ -f "$f" ] || continue
+    fname=$(basename "$f")
+    if [ ! -f "$COMMANDS_DIR/gsd/$fname" ]; then
+      NEEDS_MERGE=true
+      break
+    fi
+  done
+fi
+
+# Check if built-in root commands (peer-review etc.) need merging
+if [ "$NEEDS_MERGE" != true ] && [ -d "$COMMANDS_DIR" ] && [ -d "$BUILTIN_ROOT_COMMANDS" ]; then
+  for f in "$BUILTIN_ROOT_COMMANDS"/*.md; do
+    [ -f "$f" ] || continue
+    fname=$(basename "$f")
+    if [ ! -f "$COMMANDS_DIR/$fname" ]; then
+      NEEDS_MERGE=true
+      break
+    fi
+  done
+fi
+
 # ── Compute effective HOME ───────────────────────────────────
 EFFECTIVE_HOME="$HOME"
 
 if [ "$NEEDS_MERGE" = true ]; then
-  RUNTIME_HOME="/tmp/claude-runtime-home"
-  mkdir -p "$RUNTIME_HOME"
-  cp -a "$HOME/." "$RUNTIME_HOME/" 2>/dev/null || true
+  RUNTIME_HOME="/opt/claude-runtime-home"
+  mkdir -p "$RUNTIME_HOME/.claude"
+
+  # Copy HOME selectively — skip .claude/projects (mounted volume, can be huge)
+  # Copy top-level files
+  for f in "$HOME"/.* "$HOME"/*; do
+    fname=$(basename "$f")
+    [ "$fname" = "." ] || [ "$fname" = ".." ] && continue
+    [ "$fname" = ".claude" ] && continue
+    cp -a "$f" "$RUNTIME_HOME/" 2>/dev/null || true
+  done
+  # Copy .claude/ contents except projects/
+  for f in "$HOME/.claude"/*; do
+    fname=$(basename "$f")
+    [ "$fname" = "projects" ] && continue
+    cp -a "$f" "$RUNTIME_HOME/.claude/" 2>/dev/null || true
+  done
+
+  # Merge built-in agents
   mkdir -p "$RUNTIME_HOME/.claude/agents"
   for f in "$BUILTIN_AGENTS_DIR"/*.md; do
     [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/agents/"
   done
-  chown -R node:node "$RUNTIME_HOME"
-  echo "  ✓ Built-in agents merged into runtime home"
+  for f in "$BUILTIN_GSD_AGENTS"/*.md; do
+    [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/agents/"
+  done
+
+  # Merge built-in commands
+  mkdir -p "$RUNTIME_HOME/.claude/commands/gsd"
+  for f in "$BUILTIN_COMMANDS_DIR"/*.md; do
+    [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/commands/gsd/"
+  done
+  # Merge root commands (peer-review etc.)
+  for f in "$BUILTIN_ROOT_COMMANDS"/*.md; do
+    [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/commands/"
+  done
+
+  # Symlink projects back to the mounted volume so session data persists
+  ln -s "$HOME/.claude/projects" "$RUNTIME_HOME/.claude/projects"
+  chown -R -h node:node "$RUNTIME_HOME"
+  echo "  ✓ Built-in agents + commands merged into runtime home"
   EFFECTIVE_HOME="$RUNTIME_HOME"
 fi
 
