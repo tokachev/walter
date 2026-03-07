@@ -61,14 +61,25 @@ def log_tool_call(
 
 
 def read_recent_entries(seconds: int = 300, tool_filter: str = "") -> list[dict]:
-    """Read audit entries from the last N seconds, optionally filtered by tool name."""
+    """Read audit entries from the last N seconds, optionally filtered by tool name.
+
+    Reads only the last ~200 lines to avoid scanning the entire file on every check.
+    """
     cutoff = time.time() - seconds
     entries = []
 
     try:
-        with open(AUDIT_LOG_PATH, "r") as f:
-            for line in f:
-                line = line.strip()
+        with open(AUDIT_LOG_PATH, "rb") as f:
+            # Seek to the tail: read last ~64KB (enough for ~200 entries)
+            try:
+                f.seek(-65536, 2)
+                # Skip partial first line
+                f.readline()
+            except OSError:
+                f.seek(0)
+
+            for raw_line in f:
+                line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
                 try:

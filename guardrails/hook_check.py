@@ -2,7 +2,7 @@
 """
 hook_check.py — Called by hook.sh to perform audit logging and circuit breaker check.
 
-Usage: hook_check.py <tool_name> <session_id> <tool_input_json>
+Reads the full hook JSON from stdin (avoids ARG_MAX issues with large tool inputs).
 
 Exit codes:
     0 = allow
@@ -21,15 +21,18 @@ from cost_tracker import is_budget_exceeded
 
 
 def main():
-    if len(sys.argv) < 4:
-        sys.exit(0)
-
-    tool_name = sys.argv[1]
-    session_id = sys.argv[2]
     try:
-        tool_input = json.loads(sys.argv[3])
+        hook_json = json.loads(sys.stdin.read())
     except (json.JSONDecodeError, ValueError):
-        tool_input = {}
+        sys.exit(0)  # Can't parse — fail-open
+
+    tool_name = hook_json.get("tool_name", "")
+    session_id = hook_json.get("session_id", "")
+    # Hash the input for audit, don't store raw (could be huge)
+    tool_input = hook_json.get("tool_input", {})
+
+    if not tool_name:
+        sys.exit(0)
 
     # 1. Check circuit breaker
     allowed, reason = cb_check(tool_name)

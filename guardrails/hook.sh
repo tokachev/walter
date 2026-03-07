@@ -15,17 +15,17 @@ set -uo pipefail
 
 GUARDRAILS_DIR="/opt/guardrails"
 
-# Read hook input
+# Read hook input from stdin (can be large for Write/Edit tools)
 HOOK_INPUT=$(cat)
 
-# Extract fields
-TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
-SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // ""' 2>/dev/null || echo "")
-TOOL_INPUT=$(echo "$HOOK_INPUT" | jq -c '.tool_input // {}' 2>/dev/null || echo "{}")
-
-# Run guardrails check (audit + circuit breaker)
-RESULT=$(python3 "$GUARDRAILS_DIR/hook_check.py" "$TOOL_NAME" "$SESSION_ID" "$TOOL_INPUT" 2>/dev/null)
+# Pass entire hook JSON via stdin to Python (avoids ARG_MAX limits)
+RESULT=$(echo "$HOOK_INPUT" | timeout 5 python3 "$GUARDRAILS_DIR/hook_check.py" 2>/dev/null)
 EXIT_CODE=$?
+
+# timeout exit code 124 = timed out; treat as allow (fail-open)
+if [ $EXIT_CODE -eq 124 ]; then
+    exit 0
+fi
 
 if [ $EXIT_CODE -eq 1 ] && [ -n "$RESULT" ]; then
     # Circuit breaker or budget tripped — block

@@ -152,7 +152,7 @@ class ToolExecutor:
 # ─── Claude CLI integration ─────────────────────────────────────────────────
 
 def _try_record_cost(raw_output: str):
-    """Try to extract token usage from JSON output and record cost."""
+    """Try to extract token usage from claude CLI JSON output and record cost."""
     try:
         import sys
         sys.path.insert(0, "/opt/guardrails")
@@ -166,12 +166,11 @@ def _try_record_cost(raw_output: str):
             result = record_usage(MODEL, input_tokens, output_tokens)
             if result.get("budget_exceeded"):
                 raise RuntimeError(
-                    f"Cost budget exceeded: ${result['total_cost_usd']} spent "
-                    f"(budget: ${result['budget_remaining'] + result['total_cost_usd']}). "
+                    f"Cost budget exceeded: ${result['total_cost_usd']} spent. "
                     "Stopping investigation."
                 )
-    except ImportError:
-        pass  # Cost tracking unavailable — continue
+    except (ImportError, json.JSONDecodeError, KeyError):
+        pass  # Cost tracking unavailable or non-JSON output — continue
 
 
 def call_claude(prompt: str) -> str:
@@ -194,14 +193,16 @@ def call_claude(prompt: str) -> str:
     # Try to record cost from JSON response
     _try_record_cost(raw)
 
-    # Extract text content from JSON output
+    # Extract text content from JSON wrapper
+    # claude CLI --output-format json returns: {"result": "<text>", "usage": {...}, ...}
     try:
         data = json.loads(raw)
-        if isinstance(data, dict):
-            return data.get("result", data.get("content", raw))
+        if isinstance(data, dict) and "result" in data:
+            return str(data["result"])
     except (json.JSONDecodeError, ValueError):
         pass
 
+    # Fallback: return raw output (shouldn't happen with valid JSON mode)
     return raw
 
 
