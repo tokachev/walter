@@ -29,7 +29,7 @@ from google.oauth2 import service_account
 from mcp.server.fastmcp import FastMCP
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from sql_utils import strip_sql_comments as _shared_strip, validate_identifier as _shared_validate, to_markdown_table as _shared_markdown
+from sql_utils import strip_sql_comments as _shared_strip, validate_identifier as _shared_validate, to_markdown_table as _shared_markdown, check_sql_safety as _shared_check_safety
 
 # ── Constants ────────────────────────────────────────────────
 
@@ -244,6 +244,11 @@ def run_query(sql: str) -> str:
         sql: The SQL query to execute.
     """
     try:
+        # SQL guardrail: block destructive operations
+        safety_error = _shared_check_safety(sql)
+        if safety_error:
+            return f"**Error**: {safety_error}"
+
         cleaned = _strip_sql_comments(sql).strip()
         first_word = cleaned.lower().split()[0] if cleaned.split() else ""
 
