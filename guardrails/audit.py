@@ -7,6 +7,7 @@ Structure per entry:
 Writes JSONL to /var/log/walter/audit.jsonl (configurable via WALTER_AUDIT_LOG).
 """
 
+import fcntl
 import hashlib
 import json
 import os
@@ -54,7 +55,10 @@ def log_tool_call(
 
     try:
         with open(AUDIT_LOG_PATH, "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.flush()
+            fcntl.flock(f, fcntl.LOCK_UN)
     except OSError:
         # Fail-open: audit failure must not block operations
         pass

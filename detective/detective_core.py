@@ -151,8 +151,17 @@ class ToolExecutor:
 
 # ─── Claude CLI integration ─────────────────────────────────────────────────
 
+class BudgetExceededError(RuntimeError):
+    """Raised when cost budget is exceeded — triggers graceful investigation stop."""
+    pass
+
+
 def _try_record_cost(raw_output: str):
-    """Try to extract token usage from claude CLI JSON output and record cost."""
+    """Try to extract token usage from claude CLI JSON output and record cost.
+
+    Raises BudgetExceededError (not generic RuntimeError) so callers can
+    distinguish budget stops from real errors.
+    """
     try:
         import sys
         sys.path.insert(0, "/opt/guardrails")
@@ -165,7 +174,7 @@ def _try_record_cost(raw_output: str):
         if input_tokens or output_tokens:
             result = record_usage(MODEL, input_tokens, output_tokens)
             if result.get("budget_exceeded"):
-                raise RuntimeError(
+                raise BudgetExceededError(
                     f"Cost budget exceeded: ${result['total_cost_usd']} spent. "
                     "Stopping investigation."
                 )
@@ -174,7 +183,11 @@ def _try_record_cost(raw_output: str):
 
 
 def call_claude(prompt: str) -> str:
-    """Call claude CLI in print mode with cost tracking."""
+    """Call claude CLI in print mode with cost tracking.
+
+    Raises BudgetExceededError if cost budget is exceeded AFTER extracting the
+    response text (so the last response is not lost).
+    """
     result = subprocess.run(
         ["claude", "-p", "--model", MODEL, "--max-turns", "1",
          "--output-format", "json"],
@@ -190,20 +203,19 @@ def call_claude(prompt: str) -> str:
 
     raw = result.stdout.strip()
 
-    # Try to record cost from JSON response
-    _try_record_cost(raw)
-
-    # Extract text content from JSON wrapper
-    # claude CLI --output-format json returns: {"result": "<text>", "usage": {...}, ...}
+    # Extract text first, then check cost (so response isn't lost on budget stop)
+    text = raw
     try:
         data = json.loads(raw)
         if isinstance(data, dict) and "result" in data:
-            return str(data["result"])
+            text = str(data["result"])
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Fallback: return raw output (shouldn't happen with valid JSON mode)
-    return raw
+    # Record cost — may raise BudgetExceededError
+    _try_record_cost(raw)
+
+    return text
 
 
 def parse_action(response: str) -> Optional[dict]:
@@ -297,6 +309,9 @@ def run_investigation(
 
         try:
             response = call_claude(prompt)
+        except BudgetExceededError as e:
+            thinking_blocks.append(f"Investigation stopped: {e}")
+            break
         except Exception as e:
             thinking_blocks.append(f"Error calling Claude: {e}")
             break
