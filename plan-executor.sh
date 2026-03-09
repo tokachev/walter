@@ -54,6 +54,24 @@ log_ok() { echo "  ✓ $*"; }
 log_err() { echo "  ✗ $*" >&2; }
 log_warn() { echo "  ⚠ $*"; }
 
+# extract_plan_context — returns everything before the first ### Task header (capped at 200 lines)
+extract_plan_context() {
+  local plan="$1"
+  local result=""
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+[0-9]+ ]]; then
+      break
+    fi
+    result+="$line"$'\n'
+  done < "$plan"
+  # If no Task header was found, return empty to avoid injecting the whole file
+  if ! grep -q '^### *Task *[0-9]' "$plan" 2>/dev/null; then
+    echo ""
+    return 0
+  fi
+  echo "$result" | head -200
+}
+
 # find_next_task — returns the task number of the first task with unchecked items.
 # Scans for ### Task N: headers and checks if there are - [ ] or - [WAIT] items.
 # Returns empty string if all tasks are done.
@@ -285,14 +303,21 @@ for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
     continue
   fi
 
-  # Build task section and validation commands
+  # Build task section, validation commands, and plan context
   task_section=$(extract_task_section "$plan_file" "$task_num")
   validation_cmds=$(extract_validation_commands "$plan_file")
+  plan_context=$(extract_plan_context "$plan_file")
 
   # Build prompt
   prompt="You are executing a plan inside a walter container.
-
-Read the plan file at ${plan_file}.
+"
+  if [ -n "$plan_context" ]; then
+    prompt+="
+PLAN CONTEXT (read carefully, applies to all tasks):
+${plan_context}
+"
+  fi
+  prompt+="Read the plan file at ${plan_file}.
 You are executing Task ${task_num}: ${task_title}.
 ONLY work on this task. Do NOT continue to the next task.
 
