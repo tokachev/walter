@@ -13,6 +13,7 @@ Config via env vars:
 On budget exceeded: writes alert file + returns block signal.
 """
 
+import fcntl
 import json
 import os
 import time
@@ -66,6 +67,8 @@ def record_usage(model: str, input_tokens: int, output_tokens: int) -> dict:
     """
     Record token usage and check budget.
 
+    Uses file locking to prevent race conditions during parallel execution.
+
     Returns dict with:
         cost_usd: cost of this call
         total_cost_usd: cumulative cost
@@ -73,15 +76,22 @@ def record_usage(model: str, input_tokens: int, output_tokens: int) -> dict:
         budget_remaining: USD remaining
     """
     cost = estimate_cost(model, input_tokens, output_tokens)
-    state = _load_state()
 
-    state["total_input_tokens"] += input_tokens
-    state["total_output_tokens"] += output_tokens
-    state["total_cost_usd"] += cost
-    state["calls"] += 1
-    state["last_update"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    Path(COST_LOG).parent.mkdir(parents=True, exist_ok=True)
+    lock_path = COST_LOG + ".lock"
 
-    _save_state(state)
+    with open(lock_path, "w") as lock_fd:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        state = _load_state()
+        state["total_input_tokens"] += input_tokens
+        state["total_output_tokens"] += output_tokens
+        state["total_cost_usd"] += cost
+        state["calls"] += 1
+        state["last_update"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        _save_state(state)
+
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
     exceeded = state["total_cost_usd"] > COST_BUDGET
 

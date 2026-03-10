@@ -19,7 +19,7 @@ GUARDRAILS_DIR="/opt/guardrails"
 HOOK_INPUT=$(cat)
 
 # Pass entire hook JSON via stdin to Python (avoids ARG_MAX limits)
-RESULT=$(echo "$HOOK_INPUT" | timeout 5 python3 "$GUARDRAILS_DIR/hook_check.py" 2>/dev/null)
+RESULT=$(printf '%s' "$HOOK_INPUT" | timeout 5 python3 "$GUARDRAILS_DIR/hook_check.py" 2>/dev/null)
 EXIT_CODE=$?
 
 # timeout exit code 124 = timed out; treat as allow (fail-open)
