@@ -502,10 +502,16 @@ if [ "$NEEDS_MERGE" = true ]; then
 fi
 
 # ── Launch ──────────────────────────────────────────────────
-if [ -n "${WALTER_PLAN_FILE:-}" ]; then
+CLAUDE_BASE_ARGS="--dangerously-skip-permissions --effort high ${MCP_ARGS[*]}"
+
+if [ -n "${WALTER_REVIEW_ONLY:-}" ]; then
+  # Review-only mode: skip plan execution, run review directly
+  export WALTER_CLAUDE_ARGS_STR="$CLAUDE_BASE_ARGS"
+  exec gosu node env HOME="$EFFECTIVE_HOME" /opt/review/review-executor.sh
+elif [ -n "${WALTER_PLAN_FILE:-}" ]; then
   # Plan execution mode: delegate to plan-executor.sh
-  export WALTER_CLAUDE_ARGS_STR="--dangerously-skip-permissions ${MCP_ARGS[*]}"
+  export WALTER_CLAUDE_ARGS_STR="$CLAUDE_BASE_ARGS"
   exec gosu node env HOME="$EFFECTIVE_HOME" /opt/plan-executor.sh
 else
-  exec gosu node env HOME="$EFFECTIVE_HOME" claude --dangerously-skip-permissions "${MCP_ARGS[@]}" "$@"
+  exec gosu node env HOME="$EFFECTIVE_HOME" claude --dangerously-skip-permissions --effort high "${MCP_ARGS[@]}" "$@"
 fi

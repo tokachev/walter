@@ -38,6 +38,11 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 COPY hooks/ /opt/hooks/
 RUN chmod +x /opt/hooks/credential-guard.sh /opt/hooks/scan-credentials.sh
 
+# Guardrails: audit log, circuit breaker, cost tracker, SQL guard
+COPY guardrails/ /opt/guardrails/
+RUN chmod +x /opt/guardrails/hook.sh
+RUN mkdir -p /var/log/walter && chown node:node /var/log/walter
+
 # Plannotator: browser-based plan review UI
 COPY plannotator/ /opt/plannotator/
 RUN chmod +x /opt/plannotator/hook.sh
@@ -45,6 +50,10 @@ RUN chmod +x /opt/plannotator/hook.sh
 # Plan executor: sequential task runner for markdown plans
 COPY plan-executor.sh /opt/plan-executor.sh
 RUN chmod +x /opt/plan-executor.sh
+
+# Review executor: post-plan code review
+COPY review/ /opt/review/
+RUN chmod +x /opt/review/review-executor.sh
 
 # GSD: commands and agents for spec-driven workflow
 COPY gsd/commands/ /opt/gsd/commands/

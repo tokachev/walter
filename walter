@@ -19,6 +19,9 @@ BUILD=false
 PLAN_FILE=""
 PLAN_MAX_ITERATIONS=""
 PLAN_RETRY_COUNT=""
+COST_BUDGET=""
+REVIEW=false
+REVIEW_ONLY=false
 
 usage() {
   cat << 'EOF'
@@ -38,6 +41,9 @@ Options:
   --plan <file>            Execute a markdown plan file (task-by-task)
   --plan-max-iter <n>      Max iterations for plan execution (default: 600)
   --plan-retries <n>       Retry count per task (default: 2)
+  --cost-budget <usd>      Max cost per run in USD (default: 5)
+  --review                 Run plan then review (code review after execution)
+  --review-only            Skip plan execution; run review only
   --build                  Rebuild Docker image
   -h, --help               Show this help
 
@@ -72,6 +78,9 @@ while [[ $# -gt 0 ]]; do
     --plan)         PLAN_FILE="$2"; shift 2 ;;
     --plan-max-iter) PLAN_MAX_ITERATIONS="$2"; shift 2 ;;
     --plan-retries) PLAN_RETRY_COUNT="$2"; shift 2 ;;
+    --cost-budget)  COST_BUDGET="$2"; shift 2 ;;
+    --review)       REVIEW=true; shift ;;
+    --review-only)  REVIEW_ONLY=true; shift ;;
     --build)        BUILD=true; shift ;;
     -h|--help)      usage ;;
     *)              CLAUDE_ARGS+=("$1"); shift ;;
@@ -82,6 +91,12 @@ PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 PROJECT_DIR=$(cd "$PROJECT_DIR" && pwd)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# ── Flag validation ────────────────────────────────────────
+if [ "$REVIEW" = true ] && [ -z "$PLAN_FILE" ]; then
+  echo "ERROR: --review requires --plan (use --review-only for standalone review)"
+  exit 1
+fi
 
 # ── Plan file validation ────────────────────────────────────
 if [ -n "$PLAN_FILE" ]; then
@@ -160,6 +175,42 @@ PROJECTS_DIR="$CLAUDE_HOME/projects"
 mkdir -p "$PROJECTS_DIR"
 MOUNTS+=(-v "$PROJECTS_DIR:/opt/claude-home/.claude/projects")
 
+# ── Safe .env parser ─────────────────────────────────────────
+# Parses KEY=VALUE pairs without shell execution (no source/eval).
+# Handles: empty lines, comments, export prefix, single/double quotes,
+# inline comments on unquoted values. Malicious payloads ($(...), `...`)
+# are kept as literal strings and never executed.
+safe_load_env() {
+  local env_file="$1"
+  [ -f "$env_file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Skip empty lines and comment lines
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Strip leading whitespace and optional 'export ' prefix
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line#export }"
+    # Must match KEY=... (KEY: alphanumeric + underscore, starting with letter/underscore)
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*) ]] || continue
+    local key="${BASH_REMATCH[1]}"
+    local val="${BASH_REMATCH[2]}"
+    # Double-quoted value: strip quotes, no inline-comment stripping
+    if [[ "$val" =~ ^\"(.*) ]]; then
+      val="${val#\"}"
+      val="${val%\"}"
+    # Single-quoted value: strip quotes, no inline-comment stripping
+    elif [[ "$val" =~ ^\'(.*) ]]; then
+      val="${val#\'}"
+      val="${val%\'}"
+    else
+      # Unquoted: strip inline comment (space + # + anything)
+      val="${val%% #*}"
+      # Trim trailing whitespace
+      val="${val%"${val##*[![:space:]]}"}"
+    fi
+    export "$key=$val"
+  done < "$env_file"
+}
+
 # ── Auth (from walter .env) ───────────────────────────────────
 ENV_VARS=(
   # Disable telemetry/analytics (segment.io, growthbook.io, datadoghq.com)
@@ -184,11 +235,7 @@ else
 fi
 
 # ── Project .env (detective, BQ, SF credentials) ─────────────
-if [ -f "$PROJECT_DIR/.env" ]; then
-  set -a
-  source "$PROJECT_DIR/.env"
-  set +a
-fi
+safe_load_env "$PROJECT_DIR/.env"
 
 # ── OpenAI / Codex (peer review) ──────────────────────────────
 CODEX_ENABLED=false
@@ -392,6 +439,11 @@ if [ -n "$PLAN_FILE" ]; then
   [ -n "$PLAN_MAX_ITERATIONS" ] && ENV_VARS+=(-e "WALTER_MAX_ITERATIONS=$PLAN_MAX_ITERATIONS")
   [ -n "$PLAN_RETRY_COUNT" ] && ENV_VARS+=(-e "WALTER_RETRY_COUNT=$PLAN_RETRY_COUNT")
 fi
+[ "$REVIEW" = true ] && ENV_VARS+=(-e "WALTER_REVIEW=true")
+[ "$REVIEW_ONLY" = true ] && ENV_VARS+=(-e "WALTER_REVIEW_ONLY=true")
+
+# ── Guardrails config ────────────────────────────────────────
+[ -n "$COST_BUDGET" ] && ENV_VARS+=(-e "WALTER_COST_BUDGET=$COST_BUDGET")
 
 
 # ── Entrypoint args (network-lock allowlist) ─────────────────
@@ -402,8 +454,11 @@ ENTRYPOINT_ARGS=()
 echo "══════════════════════════════════════════════════════"
 echo "  walter (Docker + Network Lock)"
 echo ""
-if [ -n "$PLAN_FILE" ]; then
-echo "  Mode:        PLAN EXECUTION"
+if [ "$REVIEW_ONLY" = true ]; then
+echo "  Mode:        REVIEW ONLY"
+echo ""
+elif [ -n "$PLAN_FILE" ]; then
+echo "  Mode:        PLAN EXECUTION$([ "$REVIEW" = true ] && echo " + REVIEW")"
 echo "  Plan:        $PLAN_FILE_REL"
 echo ""
 fi
@@ -460,6 +515,12 @@ echo "  Security:"
 echo "     iptables + ip6tables firewall"
 echo "     credential-guard hooks"
 echo "     no-new-privileges"
+echo ""
+echo "  Guardrails:"
+echo "     audit log (JSONL: /var/log/walter/audit.jsonl)"
+echo "     circuit breaker (threshold: ${WALTER_CB_THRESHOLD:-20} calls/${WALTER_CB_WINDOW:-120}s)"
+echo "     cost budget (\$${COST_BUDGET:-5} per run)"
+echo "     SQL guardrail (blocks DROP, TRUNCATE, DELETE w/o WHERE)"
 echo "══════════════════════════════════════════════════════"
 echo ""
 
