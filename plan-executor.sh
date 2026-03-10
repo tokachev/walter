@@ -56,18 +56,39 @@ log_warn() { echo "  ⚠ $*"; }
 
 # find_next_task — returns the task number of the first task with unchecked items.
 # Scans for ### Task N: headers and checks if there are - [ ] or - [WAIT] items.
-# Returns empty string if all tasks are done.
+# Optional second arg: wave filter (comma-separated task numbers). If set, only
+# tasks in the wave are considered.
+# Returns empty string if all tasks are done (or none in the wave are pending).
 find_next_task() {
   local plan="$1"
+  local wave="${2:-}"
   local current_task=""
   local has_unchecked=false
+
+  # Inner helper: check if a task number is in the given wave string.
+  # Returns 0 (true) if wave is empty or task is listed; 1 otherwise.
+  _task_in_wave() {
+    local tnum="$1"
+    local wv="$2"
+    [ -z "$wv" ] && return 0
+    local IFS=','
+    local wt
+    for wt in $wv; do
+      [ "$wt" = "$tnum" ] && return 0
+    done
+    return 1
+  }
 
   while IFS= read -r line; do
     # ## headers (Done Criteria, Table sections, etc.) end the current task scope
     if [[ "$line" =~ ^##[[:space:]] && ! "$line" =~ ^### ]]; then
       if [ "$has_unchecked" = true ] && [ -n "$current_task" ]; then
-        echo "$current_task"
-        return 0
+        if _task_in_wave "$current_task" "$wave"; then
+          echo "$current_task"
+          return 0
+        fi
+        # Not in wave — reset and keep scanning
+        has_unchecked=false
       fi
       current_task=""
       has_unchecked=false
@@ -75,10 +96,14 @@ find_next_task() {
     fi
     # Match ### Task N: header (with optional text after)
     if [[ "$line" =~ ^###[[:space:]]+Task[[:space:]]+([0-9]+) ]]; then
-      # If previous task had unchecked items, return it
+      # If previous task had unchecked items, check wave before returning
       if [ "$has_unchecked" = true ] && [ -n "$current_task" ]; then
-        echo "$current_task"
-        return 0
+        if _task_in_wave "$current_task" "$wave"; then
+          echo "$current_task"
+          return 0
+        fi
+        # Not in wave — reset and keep scanning
+        has_unchecked=false
       fi
       current_task="${BASH_REMATCH[1]}"
       has_unchecked=false
@@ -94,8 +119,10 @@ find_next_task() {
 
   # Check last task
   if [ "$has_unchecked" = true ] && [ -n "$current_task" ]; then
-    echo "$current_task"
-    return 0
+    if _task_in_wave "$current_task" "$wave"; then
+      echo "$current_task"
+      return 0
+    fi
   fi
 
   echo ""
@@ -217,42 +244,19 @@ fi
 
 # ── Main loop ───────────────────────────────────────────────
 
+touch /tmp/.walter-session-start
+
 for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   log "Iteration $iteration/$MAX_ITERATIONS"
 
-  # Find next task with unchecked items
-  task_num=$(find_next_task "$plan_file")
+  # Find next task with unchecked items (respects WAVE_FILTER if set)
+  task_num=$(find_next_task "$plan_file" "$WAVE_FILTER")
   if [ -z "$task_num" ]; then
     echo ""
     log_ok "All tasks complete in $plan_file!"
     echo ""
-    return 0
-  fi
-
-  # Wave filter: skip tasks not in this wave
-  if ! is_task_in_wave "$task_num"; then
-    log "Task $task_num: skipped (not in wave $WAVE_FILTER)"
-    # Mark as "not our problem" — find next task that IS in wave
-    # To avoid infinite loop, check if ANY remaining task is in our wave
-    local found_wave_task=false
-    local check_num="$task_num"
-    while [ -n "$check_num" ]; do
-      if is_task_in_wave "$check_num"; then
-        found_wave_task=true
-        break
-      fi
-      # Temporarily mark this task's items to skip past it in find_next_task
-      # (We don't actually skip — we just need to find the NEXT task)
-      # Instead, just break and let the caller know we're done with our wave
-      break
-    done
-    if [ "$found_wave_task" = false ]; then
-      log_ok "All wave tasks complete!"
-      return 0
-    fi
-    # If the next task isn't in our wave, we're done
     return 0
   fi
 
@@ -403,4 +407,10 @@ done
 
 echo ""
 log_ok "All plan files executed successfully!"
+
+if [ "${WALTER_REVIEW:-}" = "true" ]; then
+  log "Handing off to review-executor..."
+  exec /opt/review/review-executor.sh
+fi
+
 exit 0

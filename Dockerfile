@@ -51,6 +51,10 @@ RUN chmod +x /opt/plannotator/hook.sh
 COPY plan-executor.sh /opt/plan-executor.sh
 RUN chmod +x /opt/plan-executor.sh
 
+# Review executor: post-plan code review
+COPY review/ /opt/review/
+RUN chmod +x /opt/review/review-executor.sh
+
 # GSD: commands and agents for spec-driven workflow
 COPY gsd/commands/ /opt/gsd/commands/
 COPY gsd/agents/ /opt/gsd/agents/

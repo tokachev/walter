@@ -30,6 +30,11 @@ def check_sql_safety(sql: str) -> str | None:
 
     normalized = " ".join(cleaned.lower().split())
 
+    # Block multi-statement queries (e.g. SELECT 1; DELETE FROM t)
+    segments = [s for s in cleaned.split(";") if s.strip()]
+    if len(segments) > 1:
+        return "SQL guardrail: multi-statement queries are blocked"
+
     # Block DROP
     if re.search(r"\bdrop\s+(table|database|schema|view|index|function|procedure)\b", normalized):
         return "SQL guardrail: DROP statements are blocked"
@@ -42,6 +47,11 @@ def check_sql_safety(sql: str) -> str | None:
     if re.search(r"\bdelete\s+from\b", normalized):
         if not re.search(r"\bdelete\s+from\s+\S+\s+.*\bwhere\b", normalized):
             return "SQL guardrail: DELETE without WHERE clause is blocked"
+
+    # Block DELETE with tautology WHERE clause
+    if re.search(r"\bdelete\s+from\b", normalized):
+        if re.search(r"\bwhere\s+(true|1\s*=\s*1)\b", normalized):
+            return "SQL guardrail: DELETE with tautology WHERE clause is blocked"
 
     return None
 
