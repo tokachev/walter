@@ -65,11 +65,11 @@ extract_plan_context() {
     result+="$line"$'\n'
   done < "$plan"
   # If no Task header was found, return empty to avoid injecting the whole file
-  if ! grep -q '^### *Task *[0-9]' "$plan" 2>/dev/null; then
+  if ! grep -qE '^###[[:space:]]+Task[[:space:]]+[0-9]+' "$plan" 2>/dev/null; then
     echo ""
     return 0
   fi
-  echo "$result" | head -200
+  printf '%s' "$result" | head -200
 }
 
 # find_next_task — returns the task number of the first task with unchecked items.
