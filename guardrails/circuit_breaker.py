@@ -13,7 +13,7 @@ import os
 
 from audit import read_recent_entries
 
-THRESHOLD = int(os.getenv("WALTER_CB_THRESHOLD", "20"))
+THRESHOLD = int(os.getenv("WALTER_CB_THRESHOLD", "50"))
 WINDOW = int(os.getenv("WALTER_CB_WINDOW", "120"))
 
 
