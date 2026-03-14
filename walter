@@ -15,6 +15,7 @@ EXTRA_DOMAINS=""
 SNOWFLAKE_KEY=""
 BQ_CREDENTIALS=""
 BQ_MCP_CONFIG=""
+GCLOUD_ADC=false
 BUILD=false
 PLAN_FILE=""
 PLAN_MAX_ITERATIONS=""
@@ -38,6 +39,7 @@ Options:
   --snowflake-key <path>   Snowflake private key PEM file
   --bq-credentials <path>  BigQuery service account JSON key file (override)
   --bq-mcp-config <path>   BigQuery MCP config JSON file
+  --gcloud                 Mount host gcloud ADC for BigQuery (no SA key needed)
   --plan <file>            Execute a markdown plan file (task-by-task)
   --plan-max-iter <n>      Max iterations for plan execution (default: 600)
   --plan-retries <n>       Retry count per task (default: 2)
@@ -75,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --snowflake-key) SNOWFLAKE_KEY="$2"; shift 2 ;;
     --bq-credentials) BQ_CREDENTIALS="$2"; shift 2 ;;
     --bq-mcp-config) BQ_MCP_CONFIG="$2"; shift 2 ;;
+    --gcloud)       GCLOUD_ADC=true; shift ;;
     --plan)         PLAN_FILE="$2"; shift 2 ;;
     --plan-max-iter) PLAN_MAX_ITERATIONS="$2"; shift 2 ;;
     --plan-retries) PLAN_RETRY_COUNT="$2"; shift 2 ;;
@@ -257,6 +260,33 @@ if [ "$CODEX_ENABLED" = true ]; then
     EXTRA_DOMAINS="$EXTRA_DOMAINS,$CODEX_DOMAINS"
   else
     EXTRA_DOMAINS="$CODEX_DOMAINS"
+  fi
+fi
+
+# ── gcloud ADC (host credentials for BigQuery) ───────────────
+if [ "$GCLOUD_ADC" = true ]; then
+  ADC_FILE="$HOME/.config/gcloud/application_default_credentials.json"
+  if [ ! -f "$ADC_FILE" ]; then
+    echo "ERROR: gcloud ADC not found at $ADC_FILE"
+    echo "Run:   gcloud auth application-default login"
+    exit 1
+  fi
+  MOUNTS+=(-v "$ADC_FILE:/opt/secrets/gcloud-adc.json:ro")
+  ENV_VARS+=(-e "GOOGLE_APPLICATION_CREDENTIALS=/opt/secrets/gcloud-adc.json")
+
+  # Open firewall for BigQuery API
+  GCLOUD_DOMAINS="bigquery.googleapis.com,storage.googleapis.com,oauth2.googleapis.com"
+  if [ -n "$EXTRA_DOMAINS" ]; then
+    EXTRA_DOMAINS="$EXTRA_DOMAINS,$GCLOUD_DOMAINS"
+  else
+    EXTRA_DOMAINS="$GCLOUD_DOMAINS"
+  fi
+
+  # Auto-generate minimal BQ MCP config if none provided
+  if [ -z "$BQ_MCP_CONFIG" ] && [ -z "$BQ_MCP_CONFIG_PATH" ]; then
+    GCLOUD_BQ_CONFIG=$(mktemp)
+    echo '{"auth_mode": "adc"}' > "$GCLOUD_BQ_CONFIG"
+    BQ_MCP_CONFIG="$GCLOUD_BQ_CONFIG"
   fi
 fi
 
@@ -493,6 +523,12 @@ if [ "$BQ_MCP_ENABLED" = true ]; then
 echo "  BigQuery MCP:"
 echo "     MCP: bigquery (read + write to configured dataset)"
 echo "     Config: $BQ_MCP_CONFIG_RESOLVED"
+echo ""
+fi
+if [ "$GCLOUD_ADC" = true ]; then
+echo "  gcloud ADC:"
+echo "     Mounted from host (~/.config/gcloud/)"
+echo "     BigQuery API domains allowed through firewall"
 echo ""
 fi
 if [ "$CODEX_ENABLED" = true ]; then

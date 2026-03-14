@@ -63,9 +63,10 @@ def _get_client() -> bigquery.Client:
         return _cached_client
     config = _load_config()
     mode = config.get("auth_mode", "adc")
+    project = config.get("project") or os.environ.get("BQ_PROJECT") or None
 
     if mode == "adc":
-        _cached_client = bigquery.Client()
+        _cached_client = bigquery.Client(project=project)
         return _cached_client
 
     if mode == "service_account":
@@ -82,7 +83,7 @@ def _get_client() -> bigquery.Client:
         creds = service_account.Credentials.from_service_account_file(
             key_path, scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
-        _cached_client = bigquery.Client(credentials=creds)
+        _cached_client = bigquery.Client(project=project, credentials=creds)
         return _cached_client
 
     raise ValueError(f"Unknown auth_mode: {mode}")
@@ -143,12 +144,23 @@ def _parse_write_target(sql: str) -> tuple[str, str] | None:
 _to_markdown_table = _shared_markdown
 
 
+# ── Write mode detection ──────────────────────────────────────
+
+def _has_write_dataset() -> bool:
+    """Check if write_dataset is configured (without raising)."""
+    try:
+        config = _load_config()
+        wd = config.get("write_dataset")
+        return bool(wd and "project_id" in wd and "dataset_id" in wd)
+    except Exception:
+        return False
+
+
+_WRITE_ENABLED = _has_write_dataset()
+
 # ── MCP Server ───────────────────────────────────────────────
 
-mcp = FastMCP(
-    "bigquery",
-    description="BigQuery access: full read + restricted write to configured dataset.",
-)
+mcp = FastMCP("bigquery")
 
 
 @mcp.tool()
@@ -234,156 +246,128 @@ def get_table_schema(project_id: str, dataset_id: str, table_id: str) -> str:
 
 @mcp.tool()
 def run_query(sql: str) -> str:
-    """Execute a SQL query against BigQuery.
+    """Execute a read-only SQL query against BigQuery.
 
-    SELECT/WITH queries run as read-only. DML/DDL queries are restricted to the
-    configured write dataset. Results are capped at 1000 rows.
+    Only SELECT/WITH queries are allowed. Results are capped at 1000 rows.
     Use LIMIT clauses to avoid expensive full-table scans.
 
     Args:
         sql: The SQL query to execute.
     """
     try:
-        # SQL guardrail: block destructive operations
         safety_error = _shared_check_safety(sql)
         if safety_error:
             return f"**Error**: {safety_error}"
 
-        cleaned = _strip_sql_comments(sql).strip()
-        first_word = cleaned.lower().split()[0] if cleaned.split() else ""
-
-        # Read-only path
-        if first_word in ("select", "with"):
-            client = _get_client()
-            result = client.query(sql).result()
-            columns = [f.name for f in result.schema]
-            rows = []
-            for i, row in enumerate(result):
-                if i >= ROW_LIMIT:
-                    break
-                rows.append([row[c] for c in columns])
-            table = _to_markdown_table(columns, rows)
-            if result.total_rows and result.total_rows > ROW_LIMIT:
-                table += f"\n\n_Showing first {ROW_LIMIT} rows. {result.total_rows} total rows._"
-            return table
-
-        # Write path — validate target dataset
-        target = _parse_write_target(cleaned)
-        if target is None:
-            return (
-                "**Error**: Could not determine target dataset from SQL. "
-                "For write operations, use fully-qualified table names: `project.dataset.table`."
-            )
-        target_project, target_dataset = target
-        if not _is_write_allowed(target_project, target_dataset):
-            allowed_project, allowed_dataset = _get_write_dataset()
-            return (
-                f"**Error**: Write access denied. Target dataset "
-                f"'{target_project}.{target_dataset}' is not the configured "
-                f"write dataset '{allowed_project}.{allowed_dataset}'."
-            )
-
         client = _get_client()
         result = client.query(sql).result()
-        return "Query completed successfully."
+        columns = [f.name for f in result.schema]
+        rows = []
+        for i, row in enumerate(result):
+            if i >= ROW_LIMIT:
+                break
+            rows.append([row[c] for c in columns])
+        table = _to_markdown_table(columns, rows)
+        if result.total_rows and result.total_rows > ROW_LIMIT:
+            table += f"\n\n_Showing first {ROW_LIMIT} rows. {result.total_rows} total rows._"
+        return table
 
     except Exception as e:
         return f"**BigQuery error**: {e}"
 
 
-@mcp.tool()
-def create_table(project_id: str, dataset_id: str, table_id: str, schema_json: str) -> str:
-    """Create a new BigQuery table in the configured write dataset.
+# ── Write tools (only registered when write_dataset is configured) ──
 
-    Args:
-        project_id: The GCP project ID.
-        dataset_id: The dataset ID (must match configured write dataset).
-        table_id: The new table name.
-        schema_json: JSON array of column definitions, e.g.
-                     [{"name": "id", "type": "INTEGER", "mode": "REQUIRED"}]
-    """
-    if not _is_write_allowed(project_id, dataset_id):
-        allowed_project, allowed_dataset = _get_write_dataset()
-        return (
-            f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
-            f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
-        )
-    try:
-        schema_defs = json.loads(schema_json)
-        schema = [
-            bigquery.SchemaField(
-                name=f["name"],
-                field_type=f["type"],
-                mode=f.get("mode", "NULLABLE"),
+if _WRITE_ENABLED:
+
+    @mcp.tool()
+    def create_table(project_id: str, dataset_id: str, table_id: str, schema_json: str) -> str:
+        """Create a new BigQuery table in the configured write dataset.
+
+        Args:
+            project_id: The GCP project ID.
+            dataset_id: The dataset ID (must match configured write dataset).
+            table_id: The new table name.
+            schema_json: JSON array of column definitions, e.g.
+                         [{"name": "id", "type": "INTEGER", "mode": "REQUIRED"}]
+        """
+        if not _is_write_allowed(project_id, dataset_id):
+            allowed_project, allowed_dataset = _get_write_dataset()
+            return (
+                f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
+                f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
             )
-            for f in schema_defs
-        ]
-        client = _get_client()
-        table_ref = f"{project_id}.{dataset_id}.{table_id}"
-        client.create_table(bigquery.Table(table_ref, schema=schema))
-        return f"Table '{table_ref}' created successfully."
-    except Exception as e:
-        return f"**BigQuery error**: {e}"
+        try:
+            schema_defs = json.loads(schema_json)
+            schema = [
+                bigquery.SchemaField(
+                    name=f["name"],
+                    field_type=f["type"],
+                    mode=f.get("mode", "NULLABLE"),
+                )
+                for f in schema_defs
+            ]
+            client = _get_client()
+            table_ref = f"{project_id}.{dataset_id}.{table_id}"
+            client.create_table(bigquery.Table(table_ref, schema=schema))
+            return f"Table '{table_ref}' created successfully."
+        except Exception as e:
+            return f"**BigQuery error**: {e}"
 
+    @mcp.tool()
+    def insert_rows(project_id: str, dataset_id: str, table_id: str, rows_json: str) -> str:
+        """Insert rows into a BigQuery table using streaming insert.
 
-@mcp.tool()
-def insert_rows(project_id: str, dataset_id: str, table_id: str, rows_json: str) -> str:
-    """Insert rows into a BigQuery table using streaming insert.
+        Args:
+            project_id: The GCP project ID.
+            dataset_id: The dataset ID (must match configured write dataset).
+            table_id: The target table.
+            rows_json: JSON array of row objects, e.g. [{"id": 1, "name": "Alice"}]
+        """
+        if not _is_write_allowed(project_id, dataset_id):
+            allowed_project, allowed_dataset = _get_write_dataset()
+            return (
+                f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
+                f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
+            )
+        try:
+            rows = json.loads(rows_json)
+            client = _get_client()
+            table_ref = f"{project_id}.{dataset_id}.{table_id}"
+            errors = client.insert_rows_json(table_ref, rows)
+            if errors:
+                return f"**Insert error**: {errors}"
+            return f"Inserted {len(rows)} row(s) into '{table_ref}'."
+        except Exception as e:
+            return f"**BigQuery error**: {e}"
 
-    Note: Rows inserted via streaming may take a few minutes to appear in query results
-    due to BigQuery's streaming buffer.
+    @mcp.tool()
+    def create_or_replace_table_as(
+        project_id: str, dataset_id: str, table_id: str, select_sql: str
+    ) -> str:
+        """Create or replace a BigQuery table from a SELECT query (CTAS).
 
-    Args:
-        project_id: The GCP project ID.
-        dataset_id: The dataset ID (must match configured write dataset).
-        table_id: The target table.
-        rows_json: JSON array of row objects, e.g. [{"id": 1, "name": "Alice"}]
-    """
-    if not _is_write_allowed(project_id, dataset_id):
-        allowed_project, allowed_dataset = _get_write_dataset()
-        return (
-            f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
-            f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
-        )
-    try:
-        rows = json.loads(rows_json)
-        client = _get_client()
-        table_ref = f"{project_id}.{dataset_id}.{table_id}"
-        errors = client.insert_rows_json(table_ref, rows)
-        if errors:
-            return f"**Insert error**: {errors}"
-        return f"Inserted {len(rows)} row(s) into '{table_ref}'."
-    except Exception as e:
-        return f"**BigQuery error**: {e}"
-
-
-@mcp.tool()
-def create_or_replace_table_as(
-    project_id: str, dataset_id: str, table_id: str, select_sql: str
-) -> str:
-    """Create or replace a BigQuery table from a SELECT query (CTAS).
-
-    Args:
-        project_id: The GCP project ID.
-        dataset_id: The dataset ID (must match configured write dataset).
-        table_id: The target table name.
-        select_sql: The SELECT query whose results will populate the table.
-    """
-    if not _is_write_allowed(project_id, dataset_id):
-        allowed_project, allowed_dataset = _get_write_dataset()
-        return (
-            f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
-            f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
-        )
-    if not all(_validate_identifier(n) for n in [project_id, dataset_id, table_id]):
-        return "**Error**: Invalid characters in project/dataset/table identifiers."
-    try:
-        client = _get_client()
-        sql = f"CREATE OR REPLACE TABLE `{project_id}.{dataset_id}.{table_id}` AS {select_sql}"
-        client.query(sql).result()
-        return f"Table '{project_id}.{dataset_id}.{table_id}' created/replaced successfully."
-    except Exception as e:
-        return f"**BigQuery error**: {e}"
+        Args:
+            project_id: The GCP project ID.
+            dataset_id: The dataset ID (must match configured write dataset).
+            table_id: The target table name.
+            select_sql: The SELECT query whose results will populate the table.
+        """
+        if not _is_write_allowed(project_id, dataset_id):
+            allowed_project, allowed_dataset = _get_write_dataset()
+            return (
+                f"**Error**: Write access denied. Target '{project_id}.{dataset_id}' "
+                f"is not the configured write dataset '{allowed_project}.{allowed_dataset}'."
+            )
+        if not all(_validate_identifier(n) for n in [project_id, dataset_id, table_id]):
+            return "**Error**: Invalid characters in project/dataset/table identifiers."
+        try:
+            client = _get_client()
+            sql = f"CREATE OR REPLACE TABLE `{project_id}.{dataset_id}.{table_id}` AS {select_sql}"
+            client.query(sql).result()
+            return f"Table '{project_id}.{dataset_id}.{table_id}' created/replaced successfully."
+        except Exception as e:
+            return f"**BigQuery error**: {e}"
 
 
 if __name__ == "__main__":

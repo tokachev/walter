@@ -5,7 +5,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 
 # GSD: Plan Phase
 
-You are creating execution plans for the current GSD phase.
+You are creating execution plans for the current GSD phase using dual-agent analysis (Claude + Codex in parallel).
 
 ## Step 1: Load Context
 
@@ -14,38 +14,74 @@ You are creating execution plans for the current GSD phase.
 3. Read `.planning/phases/phase-{N}-CONTEXT.md` for decisions
 4. Read `.planning/PROJECT.md`
 
-## Step 2: Research (if needed)
+## Step 2: Dual Research (if phase touches existing code)
 
-If the phase touches existing code, spawn codebase-researcher:
+Run Claude and Codex research in parallel:
 
+### Claude Research
 ```
-Agent(subagent_type="codebase-researcher", prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on: {specific areas from context}. Write findings to .claude/research/phase-{N}-research.md")
+Agent(subagent_type="codebase-researcher", prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on: {specific areas from context}. Write findings to .claude/research/phase-{N}-research-claude.md")
 ```
 
-Wait for research results before proceeding.
+### Codex Research
 
-## Step 3: Create Plans
-
-Spawn walter-planner to create the execution plan(s):
-
-```
-Agent(subagent_type="walter-planner", prompt="Create execution plan(s) for Phase {N}.
+```bash
+codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/phase-{N}-research-codex.md
+Research the codebase for Phase {N}: {phase description}.
 
 Context:
-- Requirements: {from REQUIREMENTS.md}
-- Decisions: {from phase-N-CONTEXT.md}
-- Research: {from .claude/research/ if available}
+- Requirements: {paste key requirements from REQUIREMENTS.md}
+- Decisions: {paste key decisions from phase-N-CONTEXT.md}
 
-Write plan(s) to .planning/phases/phase-{N}-{P}-PLAN.md using this format:
-- ### Task N: headers (required for plan-executor)
-- - [ ] checklist items
-- - [WAIT] for manual gates
-- Max 10 tasks per plan, 3-7 items per task
-- Include ## Validation Commands section
+Focus on: {specific areas from context}
 
-If the phase is large, split into multiple plans (phase-{N}-1-PLAN.md, phase-{N}-2-PLAN.md).
-Each plan should be independently executable.")
+Analyze: relevant files, existing patterns, dependencies, potential conflicts, edge cases.
+Be specific — reference exact file paths and line numbers.
+
+Output a structured markdown document with your findings.
+CODEX_EOF
 ```
+
+### Merge Research
+
+After both complete, read:
+1. `.claude/research/phase-{N}-research-claude.md`
+2. `.claude/research/phase-{N}-research-codex.md`
+
+Produce merged research at `.claude/research/phase-{N}-research.md`:
+- Combine agreed-upon findings (high confidence)
+- Note unique insights from each agent
+- Flag any contradictions for consideration during planning
+
+## Step 3: Coordinated Planning
+
+Spawn the plan-coordinator agent. This agent launches Claude planner and Codex planner in parallel, compares their outputs, resolves divergences, and synthesizes the final plan.
+
+```
+Agent(subagent_type="plan-coordinator", prompt="
+PHASE_NUMBER: {N}
+PHASE_DESCRIPTION: {phase description from ROADMAP.md}
+OUTPUT_PATH: .planning/phases/phase-{N}-1-PLAN.md
+
+REQUIREMENTS:
+{paste full requirements for this phase from REQUIREMENTS.md}
+
+DECISIONS:
+{paste full content of phase-{N}-CONTEXT.md}
+
+RESEARCH:
+{paste key findings from .claude/research/phase-{N}-research.md}
+")
+```
+
+The coordinator will:
+1. Spawn walter-planner (Claude) and codex exec in parallel
+2. Compare both plans across task breakdown, completeness, approach, ordering
+3. Optionally resume the Claude planner for clarification on divergences
+4. Synthesize the final plan at the OUTPUT_PATH
+5. Document divergences in ## Agent Notes section
+
+After the coordinator finishes, read the final plan to verify it was written correctly.
 
 ## Step 4: Validate Plans
 

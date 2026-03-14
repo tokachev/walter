@@ -35,23 +35,18 @@ def check_sql_safety(sql: str) -> str | None:
     if len(segments) > 1:
         return "SQL guardrail: multi-statement queries are blocked"
 
-    # Block DROP
-    if re.search(r"\bdrop\s+(table|database|schema|view|index|function|procedure)\b", normalized):
-        return "SQL guardrail: DROP statements are blocked"
+    # Allowlist: only SELECT / WITH queries pass
+    first_keyword = normalized.split()[0] if normalized.split() else ""
+    if first_keyword not in ("select", "with"):
+        return (
+            f"SQL guardrail: only SELECT/WITH queries are allowed. "
+            f"Got: {first_keyword.upper()}"
+        )
 
-    # Block TRUNCATE
-    if re.search(r"\btruncate\s+(table\s+)?\w+", normalized):
-        return "SQL guardrail: TRUNCATE statements are blocked"
-
-    # Block DELETE without WHERE
-    if re.search(r"\bdelete\s+from\b", normalized):
-        if not re.search(r"\bdelete\s+from\s+\S+\s+.*\bwhere\b", normalized):
-            return "SQL guardrail: DELETE without WHERE clause is blocked"
-
-    # Block DELETE with tautology WHERE clause
-    if re.search(r"\bdelete\s+from\b", normalized):
-        if re.search(r"\bwhere\s+(true|1\s*=\s*1)\b", normalized):
-            return "SQL guardrail: DELETE with tautology WHERE clause is blocked"
+    # Block subquery-based writes: SELECT * FROM (DELETE ...), etc.
+    write_verbs = r"\b(insert\s+into|update\s+\S+\s+set|delete\s+from|merge\s+into|drop\s|truncate\s|alter\s|create\s|grant\s|revoke\s)"
+    if re.search(write_verbs, normalized):
+        return "SQL guardrail: write operations inside SELECT are blocked"
 
     return None
 

@@ -15,13 +15,35 @@ Ask the user these questions (skip any they've already answered in $ARGUMENTS):
 3. **Any constraints?** (tech stack, timeline, compatibility requirements)
 4. **Is there existing code to work with?** (if yes, we'll research it)
 
-## Step 2: Codebase Research (if existing code)
+## Step 2: Dual Codebase Research (if existing code)
 
-If working with existing code, spawn a codebase-researcher agent:
+If working with existing code, run Claude and Codex research in parallel:
 
+### Claude Research
 ```
-Agent(subagent_type="codebase-researcher", prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to: {brief summary}. Write findings to .claude/research/gsd-codebase-overview.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to: {brief summary}. Write findings to .claude/research/gsd-codebase-overview-claude.md")
 ```
+
+### Codex Research
+```bash
+codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/gsd-codebase-overview-codex.md
+Analyze this codebase. Document:
+
+1. **Project structure** — directory layout, key files, entry points
+2. **Tech stack** — languages, frameworks, versions, dependencies
+3. **Key patterns** — coding conventions, architectural patterns, testing approach
+4. **Areas relevant to**: {brief summary of what we're building}
+
+Be specific — reference exact file paths. Output structured markdown.
+CODEX_EOF
+```
+
+### Merge Research
+
+After both complete, read both files and produce merged overview at `.claude/research/gsd-codebase-overview.md`:
+- Combine agreed-upon findings
+- Note unique insights from each
+- Flag contradictions (if any) for the user
 
 ## Step 3: Create .planning/ Structure
 

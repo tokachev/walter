@@ -105,10 +105,7 @@ _to_markdown_table = to_markdown_table
 
 # ── MCP Server ───────────────────────────────────────────────
 
-mcp = FastMCP(
-    "snowflake-readonly",
-    description="Read-only Snowflake access. Only SELECT/SHOW/DESCRIBE/EXPLAIN allowed.",
-)
+mcp = FastMCP("snowflake-readonly")
 
 
 @mcp.tool()
