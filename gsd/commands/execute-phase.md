@@ -58,7 +58,45 @@ Agent(subagent_type="plan-executor", prompt="Execute the fix plan at .planning/p
 
 Re-verify after fix. If still failing after 2 fix cycles, stop and report to user.
 
-## Step 5: Update State
+## Step 5: Document Results
+
+After verification passes (or after fix cycles complete), create a results summary:
+
+Write `.planning/phases/phase-{N}-RESULTS.md`:
+
+```markdown
+# Phase {N} Results: {Phase Name}
+
+## Summary
+{2-3 sentences: what was built/changed and why}
+
+## Changes Made
+{List of key files modified/created with brief descriptions}
+
+## Decisions During Execution
+{Any deviations from plan, blockers encountered, and how they were resolved}
+
+## Validation Status
+{Pass/fail summary from qa-validator}
+```
+
+## Step 6: Capture Lessons
+
+If any of the following occurred during this phase, capture lessons:
+- Fix cycles were needed (gsd-debugger was invoked)
+- Plan deviations were flagged by plan-executor
+- qa-validator found issues
+- Unexpected blockers were encountered
+
+For each, append to `tasks/lessons.md` following the format in that file:
+1. What went wrong or was unexpected
+2. Root cause
+3. Preventive rule for future phases
+4. Scope (this phase or general)
+
+Skip this step if execution was clean with no issues.
+
+## Step 7: Update State
 
 Update `.planning/STATE.md`:
 - State: VERIFYING (after execution), PHASE_COMPLETE (after verification passes), or FIX (if debugging)

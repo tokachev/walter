@@ -18,9 +18,19 @@ Before writing any code:
 
 1. Read the plan fully.
 2. Read the project's memory tag from `.memory_project` if it exists and search memory for relevant context.
-3. Identify all steps in the plan.
-4. Survey the codebase to understand existing conventions before touching anything.
-5. Announce the execution sequence before starting.
+3. Read `tasks/lessons.md` if it exists — review the Rules Index and apply relevant lessons.
+4. Identify all steps in the plan.
+5. Survey the codebase to understand existing conventions before touching anything.
+6. Announce the execution sequence before starting.
+
+## Elegance Check
+
+Before implementing a non-trivial task (>3 checklist items or touches >3 files), pause and ask:
+- Does the codebase already have a function or pattern that solves this?
+- Is there a simpler approach that achieves the same goal?
+- Am I about to create an abstraction for a one-time operation?
+
+If the answer suggests a simpler path, note it in the step summary and follow the simpler approach (unless it contradicts the plan — in which case flag it as a blocker).
 
 ## Execution Rules
 
