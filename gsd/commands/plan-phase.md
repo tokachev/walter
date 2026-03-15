@@ -5,7 +5,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 
 # GSD: Plan Phase
 
-You are creating execution plans for the current GSD phase using dual-agent analysis (Claude + Codex in parallel).
+You are creating execution plans for the current GSD phase using parallel dual-model planning: Claude + Codex research in parallel, then Claude + Codex planning in parallel, then comparison + synthesis into one final plan.
 
 ## Step 1: Load Context
 
@@ -16,16 +16,17 @@ You are creating execution plans for the current GSD phase using dual-agent anal
 
 ## Step 2: Dual Research (if phase touches existing code)
 
-Run Claude and Codex research in parallel:
+Launch Claude research in the background, then run Codex research immediately so both sessions overlap.
 
 ### Claude Research
 ```
-Agent(subagent_type="codebase-researcher", prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on: {specific areas from context}. Write findings to .claude/research/phase-{N}-research-claude.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on: {specific areas from context}. Write findings to .claude/research/phase-{N}-research-claude.md")
 ```
 
 ### Codex Research
 
 ```bash
+mkdir -p .claude/research
 codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/phase-{N}-research-codex.md
 Research the codebase for Phase {N}: {phase description}.
 
@@ -49,13 +50,19 @@ After both complete, read:
 2. `.claude/research/phase-{N}-research-codex.md`
 
 Produce merged research at `.claude/research/phase-{N}-research.md`:
-- Combine agreed-upon findings (high confidence)
-- Note unique insights from each agent
-- Flag any contradictions for consideration during planning
+- Shared findings both agents support (high confidence)
+- Claude-only insights
+- Codex-only insights
+- Contradictions or open questions
+- Planning implications and recommended focus areas
+
+Do not plan from a single research file if the other session is still running.
+
+If Codex is unavailable or fails, continue with Claude-only research but explicitly record degraded mode in the merged file and in the user-facing summary.
 
 ## Step 3: Coordinated Planning
 
-Spawn the plan-coordinator agent. This agent launches Claude planner and Codex planner in parallel, compares their outputs, resolves divergences, and synthesizes the final plan.
+Spawn the `plan-coordinator` agent. It must launch Claude planner and Codex planner in parallel from the same inputs, keep them blind to each other's plan until both finish, then compare both drafts and synthesize the final plan.
 
 ```
 Agent(subagent_type="plan-coordinator", prompt="
@@ -75,11 +82,12 @@ RESEARCH:
 ```
 
 The coordinator will:
-1. Spawn walter-planner (Claude) and codex exec in parallel
-2. Compare both plans across task breakdown, completeness, approach, ordering
-3. Optionally resume the Claude planner for clarification on divergences
-4. Synthesize the final plan at the OUTPUT_PATH
-5. Document divergences in ## Agent Notes section
+1. Launch `walter-planner` in background and run `codex exec` immediately so both plans are created in parallel
+2. Keep both planners blind to each other's draft until both outputs exist
+3. Compare both plans across task breakdown, completeness, approach, ordering, and validation quality
+4. Synthesize the final plan at the OUTPUT_PATH using the merged research from Step 2
+5. Document divergences and why each chosen approach won in `## Agent Notes`
+6. Preserve both intermediate plan files for reference
 
 After the coordinator finishes, read the final plan to verify it was written correctly.
 

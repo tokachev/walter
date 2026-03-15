@@ -24,8 +24,28 @@ Ask the user these questions (skip any answered in $ARGUMENTS):
 If working with existing code, spawn codebase-researcher:
 
 ```
-Agent(subagent_type="codebase-researcher", prompt="Research the codebase for: project structure, tech stack, key patterns. Write findings to .claude/research/gsd-codebase-overview.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to the requested project. Write findings to .claude/research/gsd-codebase-overview-claude.md")
 ```
+
+Run Codex in parallel:
+
+```bash
+mkdir -p .claude/research
+codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/gsd-codebase-overview-codex.md
+Analyze this codebase for the requested project setup. Document:
+
+1. Project structure and entry points
+2. Tech stack and key dependencies
+3. Established implementation patterns and constraints
+4. Risks or integration hotspots relevant to the requested work
+
+Output structured markdown with concrete file references.
+CODEX_EOF
+```
+
+Merge both into `.claude/research/gsd-codebase-overview.md` before writing `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md`.
+
+If Codex is unavailable, continue with Claude-only research but say so explicitly.
 
 Create `.planning/` structure: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`.
 
@@ -47,18 +67,54 @@ Capture decisions in `.planning/phases/phase-{N}-CONTEXT.md`.
 
 ### 3b. Research (if needed)
 
-If the phase touches existing code, spawn codebase-researcher:
+If the phase touches existing code, run Claude + Codex research in parallel:
 
 ```
-Agent(subagent_type="codebase-researcher", prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Write findings to .claude/research/phase-{N}-research.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on the files, dependencies, patterns, and risks most likely to affect implementation. Write findings to .claude/research/phase-{N}-research-claude.md")
 ```
+
+```bash
+mkdir -p .claude/research
+codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/phase-{N}-research-codex.md
+Research the codebase for Phase {N}: {phase description}.
+
+Context:
+- Requirements: {paste key requirements for this phase}
+- Decisions: {paste key decisions from phase-{N}-CONTEXT.md}
+
+Focus on relevant files, existing patterns, integration points, likely conflicts, and validation strategy.
+Output structured markdown with concrete file references.
+CODEX_EOF
+```
+
+Merge both into `.claude/research/phase-{N}-research.md` with:
+- shared findings
+- Claude-only insights
+- Codex-only insights
+- contradictions / open questions
+- planning implications
+
+If Codex is unavailable, continue with Claude-only research but explicitly mark degraded mode.
 
 ### 3c. Create Phase Plan
 
-Spawn walter-planner:
+Spawn `plan-coordinator` so the final phase plan is synthesized from two independent plan drafts:
 
 ```
-Agent(subagent_type="walter-planner", prompt="Create execution plan for Phase {N}. Context: {requirements, decisions, research}. Write to .planning/phases/phase-{N}-PLAN.md. Use ### Task N: headers with - [ ] items. Include ## Validation Commands. Max 10 tasks, 3-7 items per task.")
+Agent(subagent_type="plan-coordinator", prompt="
+PHASE_NUMBER: {N}
+PHASE_DESCRIPTION: {phase description}
+OUTPUT_PATH: .planning/phases/phase-{N}-PLAN.md
+
+REQUIREMENTS:
+{paste full requirements for this phase}
+
+DECISIONS:
+{paste full content of phase-{N}-CONTEXT.md}
+
+RESEARCH:
+{paste key findings from .claude/research/phase-{N}-research.md}
+")
 ```
 
 ### 3d. Review Plan with User
@@ -66,6 +122,8 @@ Agent(subagent_type="walter-planner", prompt="Create execution plan for Phase {N
 Present the created plan to the user. Ask:
 - Does this plan look right?
 - Any tasks to add/remove/modify?
+
+Also surface the `## Agent Notes` section so the user can see where Claude and Codex converged or diverged.
 
 Apply any changes before moving to the next phase.
 

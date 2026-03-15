@@ -405,8 +405,15 @@ BUILTIN_GSD_AGENTS="/opt/gsd/agents"
 BUILTIN_ROOT_COMMANDS="/opt/commands"
 NEEDS_MERGE=false
 
+# Host-mounted ~/.claude/agents or ~/.claude/commands should always be merged
+# into a writable runtime home so repo-owned Walter files can override stale
+# duplicates from the host while preserving host-only custom files.
+if [ -n "${WALTER_HOST_AGENTS_MOUNTED:-}" ] || [ -n "${WALTER_HOST_COMMANDS_MOUNTED:-}" ]; then
+  NEEDS_MERGE=true
+fi
+
 # Check if built-in agents need merging
-if [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_DIR" ]; then
+if [ "$NEEDS_MERGE" != true ] && [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_DIR" ]; then
   for f in "$BUILTIN_AGENTS_DIR"/*.md; do
     [ -f "$f" ] || continue
     fname=$(basename "$f")

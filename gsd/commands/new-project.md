@@ -17,7 +17,7 @@ Ask the user these questions (skip any they've already answered in $ARGUMENTS):
 
 ## Step 2: Dual Codebase Research (if existing code)
 
-If working with existing code, run Claude and Codex research in parallel:
+If working with existing code, run Claude and Codex research in parallel. Start Claude in the background, then run Codex immediately so both sessions overlap.
 
 ### Claude Research
 ```
@@ -26,6 +26,7 @@ Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Resea
 
 ### Codex Research
 ```bash
+mkdir -p .claude/research
 codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/gsd-codebase-overview-codex.md
 Analyze this codebase. Document:
 
@@ -45,7 +46,11 @@ After both complete, read both files and produce merged overview at `.claude/res
 - Note unique insights from each
 - Flag contradictions (if any) for the user
 
+**If Codex is unavailable** (command not found or exec fails): warn the user that Codex research was skipped, then continue with Claude-only research. Do NOT silently skip Codex.
+
 ## Step 3: Create .planning/ Structure
+
+Base `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md` on the merged overview when research exists, not on a single-agent output.
 
 Create these files:
 
@@ -103,7 +108,11 @@ Create these files:
 
 ## Step 4: Confirm
 
-Present the created structure to the user and suggest next step:
+Present the created structure to the user. If dual research was run, call out:
+- Where Claude and Codex agreed
+- Any contradictions that influenced the roadmap
+
+Then suggest next step:
 - `/gsd:discuss-phase` to discuss Phase 1 details
 - `/gsd:quick` if they want to skip straight to execution
 

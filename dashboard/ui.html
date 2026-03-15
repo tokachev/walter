@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Walter Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --bg-card-hover: #1c2129;
+  --border: #30363d;
+  --border-subtle: #21262d;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-dim: #484f58;
+  --accent: #58a6ff;
+  --green: #238636;
+  --green-text: #3fb950;
+  --green-bg: rgba(35, 134, 54, 0.15);
+  --red: #da3633;
+  --red-text: #f85149;
+  --red-bg: rgba(218, 54, 51, 0.1);
+  --yellow: #d29922;
+  --yellow-text: #e3b341;
+  --yellow-bg: rgba(210, 153, 34, 0.15);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; color: var(--text); background: var(--bg); height: 100vh; overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Header */
+.header { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border-subtle); background: rgba(22,27,34,0.95); backdrop-filter: blur(12px); flex-shrink: 0; z-index: 20; }
+.header-left { display: flex; align-items: center; gap: 10px; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.header-title { font-size: 13px; font-weight: 600; }
+.header-session-name { font-size: 12px; color: var(--accent); font-weight: 500; }
+.cost-badge { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); background: var(--bg); padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border-subtle); }
+.cost-badge.warning { border-color: var(--yellow); color: var(--yellow-text); }
+.cost-badge.exceeded { border-color: var(--red); color: var(--red-text); }
+.elapsed { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+
+/* Three-column layout */
+.main-content { flex: 1; display: flex; overflow: hidden; }
+
+/* Session List (left) */
+.session-panel { width: 220px; border-right: 1px solid var(--border-subtle); background: var(--bg-card); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+.session-panel-header { padding: 10px 12px; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border-subtle); }
+.session-list { flex: 1; overflow-y: auto; }
+.session-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-subtle); transition: background 0.12s; }
+.session-item:hover { background: var(--bg-card-hover); }
+.session-item.selected { background: rgba(88,166,255,0.08); border-left: 3px solid var(--accent); }
+.session-item-top { display: flex; align-items: center; gap: 6px; }
+.session-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.session-dot.running { background: var(--green-text); box-shadow: 0 0 6px var(--green-text); }
+.session-dot.completed { background: var(--accent); }
+.session-dot.failed { background: var(--red-text); }
+.session-dot.waiting { background: var(--yellow-text); }
+.session-name { font-size: 12px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-meta { display: flex; gap: 8px; margin-top: 3px; font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
+.session-mode { font-size: 10px; color: var(--text-dim); padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; }
+.all-sessions-btn { padding: 8px 12px; font-size: 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; border-bottom: 1px solid var(--border-subtle); }
+.all-sessions-btn:hover { background: var(--bg-card-hover); }
+.all-sessions-btn.selected { color: var(--accent); background: rgba(88,166,255,0.08); }
+.no-sessions { padding: 20px 12px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+/* Log Stream (center) */
+.log-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.log-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-card); flex-shrink: 0; }
+.search-input { flex: 1; max-width: 260px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; color: var(--text); font-family: var(--font-mono); }
+.search-input:focus { outline: none; border-color: var(--accent); }
+.search-input::placeholder { color: var(--text-dim); }
+.log-count { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
+.auto-scroll-btn { font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; }
+.auto-scroll-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.log-stream { flex: 1; overflow-y: auto; padding: 2px 0; }
+
+/* Log Entry */
+.log-entry { display: flex; flex-direction: column; padding: 3px 12px; font-size: 12px; font-family: var(--font-mono); line-height: 1.5; }
+.log-entry-meta { display: flex; align-items: center; }
+.log-entry:hover { background: var(--bg-card); }
+.log-entry.blocked { background: var(--red-bg); }
+.log-session-tag { width: 6px; height: 14px; border-radius: 2px; margin-right: 6px; flex-shrink: 0; margin-top: 3px; }
+.log-ts { color: var(--text-dim); width: 70px; flex-shrink: 0; font-size: 11px; }
+.log-tool { color: var(--accent); width: 120px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-entry.blocked .log-tool { color: var(--red-text); }
+.log-latency { color: var(--text-muted); width: 64px; flex-shrink: 0; text-align: right; }
+.log-latency.slow { color: var(--yellow-text); }
+.log-latency.very-slow { color: var(--red-text); }
+.log-blocked-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; background: var(--red-bg); color: var(--red-text); margin-left: 6px; font-weight: 600; }
+.log-summary { color: var(--text-dim); width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 11px; line-height: 1.4; padding-top: 1px; }
+.log-entry-wrap { cursor: default; }
+.log-expand { font-size: 9px; color: var(--text-dim); margin-right: 4px; flex-shrink: 0; cursor: pointer; transition: transform 0.15s; user-select: none; line-height: 1; padding: 2px 4px; }
+.log-expand.open { color: var(--text-muted); }
+.log-detail { display: none; padding: 4px 12px 8px 42px; font-size: 11px; font-family: var(--font-mono); background: var(--bg); border-bottom: 1px solid var(--border-subtle); }
+.log-detail.open { display: block; }
+.log-detail pre { white-space: pre-wrap; word-break: break-all; color: var(--text-muted); max-height: 300px; overflow-y: auto; line-height: 1.4; }
+.log-detail pre .json-key { color: var(--accent); }
+.log-detail pre .json-str { color: var(--green-text); }
+.log-detail pre .json-num { color: var(--yellow-text); }
+
+/* Task Marker */
+.task-marker { display: flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 11px; font-weight: 600; color: var(--text-muted); border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
+.task-marker.active { color: var(--green-text); border-left: 3px solid var(--green-text); }
+.task-marker.failed { color: var(--red-text); border-left: 3px solid var(--red-text); }
+.task-marker.done { color: var(--accent); border-left: 3px solid var(--accent); }
+
+/* Right Sidebar */
+.sidebar { width: 280px; border-left: 1px solid var(--border-subtle); background: var(--bg-card); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+.sidebar-section { border-bottom: 1px solid var(--border-subtle); }
+.sidebar-header { padding: 8px 12px; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.sidebar-body { padding: 0 12px 10px; }
+.plan-section { flex: 1; overflow-y: auto; }
+.plan-task { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; font-size: 12px; }
+.plan-task-icon { width: 16px; text-align: center; flex-shrink: 0; font-size: 12px; }
+.plan-task-icon.pending { color: var(--text-dim); }
+.plan-task-icon.active { color: var(--green-text); }
+.plan-task-icon.done { color: var(--accent); }
+.plan-task-icon.failed { color: var(--red-text); }
+.plan-task-title { flex: 1; color: var(--text-muted); line-height: 1.3; font-size: 11px; }
+.plan-task.active .plan-task-title { color: var(--text); font-weight: 500; }
+.metric-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+.metric-label { color: var(--text-muted); }
+.metric-value { font-family: var(--font-mono); color: var(--text); font-weight: 500; }
+.top-tools { margin-top: 6px; }
+.top-tool { display: flex; align-items: center; gap: 6px; padding: 1px 0; font-size: 11px; font-family: var(--font-mono); }
+.top-tool-bar { height: 3px; background: var(--accent); border-radius: 2px; opacity: 0.5; flex-shrink: 0; }
+.top-tool-name { color: var(--accent); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-tool-count { color: var(--text-dim); flex-shrink: 0; }
+.empty-state { padding: 16px 12px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .session-panel { width: 180px; }
+  .sidebar { width: 240px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="header-left">
+      <span class="header-title">Walter Dashboard</span>
+      <span class="header-session-name" id="headerSession"></span>
+    </div>
+    <div class="header-right">
+      <span class="elapsed" id="elapsed">00:00:00</span>
+      <span class="cost-badge" id="costBadge">$0.00</span>
+    </div>
+  </header>
+  <div class="main-content">
+    <div class="session-panel">
+      <div class="session-panel-header">Sessions</div>
+      <div class="all-sessions-btn selected" id="allSessionsBtn">All Sessions</div>
+      <div class="session-list" id="sessionList"></div>
+    </div>
+    <div class="log-panel">
+      <div class="log-toolbar">
+        <input type="text" class="search-input" id="searchInput" placeholder="Filter tools & summaries...">
+        <span class="log-count" id="logCount">0</span>
+        <button class="auto-scroll-btn active" id="autoScrollBtn">Auto-scroll</button>
+      </div>
+      <div class="log-stream" id="logStream"></div>
+    </div>
+    <div class="sidebar">
+      <div class="sidebar-section plan-section" id="planSection">
+        <div class="sidebar-header">Plan Progress</div>
+        <div class="sidebar-body" id="planBody"><div class="empty-state">Select a session</div></div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-header">Metrics</div>
+        <div class="sidebar-body" id="metricsBody">
+          <div class="metric-row"><span class="metric-label">Tool calls</span><span class="metric-value" id="mCalls">0</span></div>
+          <div class="metric-row"><span class="metric-label">Input tokens</span><span class="metric-value" id="mInput">0</span></div>
+          <div class="metric-row"><span class="metric-label">Output tokens</span><span class="metric-value" id="mOutput">0</span></div>
+          <div class="metric-row"><span class="metric-label">Calls/min</span><span class="metric-value" id="mRate">0</span></div>
+          <div class="metric-row"><span class="metric-label">Blocked</span><span class="metric-value" id="mBlocked">0</span></div>
+          <div class="top-tools" id="topTools"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+'use strict';
+
+const SESSION_COLORS = ['#58a6ff','#3fb950','#d29922','#f47067','#bc8cff','#39d2c0','#f0883e','#a5d6ff'];
+
+const state = {
+  sessions: new Map(),    // id -> { summary, auditEvents, progressEvents, costData, toolCounts, blockedCount, color }
+  selectedSession: null,  // null = all
+  filter: '',
+  autoScroll: true,
+  colorIndex: 0,
+};
+
+function getSessionColor(id) {
+  const s = state.sessions.get(id);
+  if (s) return s.color;
+  return '#58a6ff';
+}
+
+function getOrCreateSession(id) {
+  if (!state.sessions.has(id)) {
+    state.sessions.set(id, {
+      summary: { id, project_name: id, status: 'waiting', cost: 0, calls: 0, cost_budget: 5, started_at: '', mode: 'interactive' },
+      auditEvents: [],
+      progressEvents: [],
+      costData: null,
+      toolCounts: {},
+      blockedCount: 0,
+      color: SESSION_COLORS[state.colorIndex++ % SESSION_COLORS.length],
+    });
+  }
+  return state.sessions.get(id);
+}
+
+// DOM
+const logStream = document.getElementById('logStream');
+const searchInput = document.getElementById('searchInput');
+const autoScrollBtn = document.getElementById('autoScrollBtn');
+const costBadgeEl = document.getElementById('costBadge');
+const elapsedEl = document.getElementById('elapsed');
+const logCountEl = document.getElementById('logCount');
+const planBody = document.getElementById('planBody');
+const sessionListEl = document.getElementById('sessionList');
+const allSessionsBtn = document.getElementById('allSessionsBtn');
+const headerSession = document.getElementById('headerSession');
+
+// Helpers
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+function fmtTime(ts) { if (!ts) return ''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleTimeString('en-US',{hour12:false}); }
+function fmtLatency(ms) { if (!ms&&ms!==0) return ''; return ms<1000?ms.toFixed(0)+'ms':(ms/1000).toFixed(1)+'s'; }
+function fmtTokens(n) { if (!n) return '0'; if (n>=1e6) return (n/1e6).toFixed(1)+'M'; if (n>=1e3) return (n/1e3).toFixed(1)+'K'; return ''+n; }
+function fmtElapsed(ms) { const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60); return [h,m,s%60].map(v=>(''+v).padStart(2,'0')).join(':'); }
+function fmtCost(n) { return '$'+((n||0).toFixed(2)); }
+
+// Session events
+function handleSessionEvent(data) {
+  const s = getOrCreateSession(data.id);
+  s.summary = { ...s.summary, ...data };
+  renderSessionList();
+}
+
+function handleAuditEvent(data) {
+  const sid = data._session;
+  if (!sid) return;
+  const s = getOrCreateSession(sid);
+  s.auditEvents.push(data);
+  const tool = data.tool || 'unknown';
+  s.toolCounts[tool] = (s.toolCounts[tool]||0)+1;
+  if (data.blocked) s.blockedCount++;
+  if (matchesFilter(sid, data)) appendLogEntry(sid, data);
+  updateMetrics();
+  updateLogCount();
+}
+
+function handleProgressEvent(data) {
+  const sid = data._session;
+  if (!sid) return;
+  const s = getOrCreateSession(sid);
+  s.progressEvents.push(data);
+  if (data.event==='plan_start'||data.event==='task_start') s.summary.status='running';
+  else if (data.event==='plan_complete') s.summary.status='completed';
+  else if (data.event==='task_failed') s.summary.status='failed';
+  if (matchesFilter(sid, null)) {
+    if (data.event==='task_start') appendTaskMarker(sid, data, 'active');
+    else if (data.event==='task_end') appendTaskMarker(sid, data, 'done');
+    else if (data.event==='task_failed') appendTaskMarker(sid, data, 'failed');
+  }
+  renderSessionList();
+  updatePlanSidebar();
+}
+
+function handleCostEvent(data) {
+  const sid = data._session;
+  if (!sid) return;
+  const s = getOrCreateSession(sid);
+  s.costData = data;
+  s.summary.cost = data.total_cost_usd||0;
+  s.summary.calls = data.calls||0;
+  s.summary.cost_budget = data.budget_usd||5;
+  renderSessionList();
+  updateCostBadge();
+  updateMetrics();
+}
+
+function matchesFilter(sid, auditData) {
+  if (state.selectedSession && state.selectedSession !== sid) return false;
+  if (auditData && state.filter) {
+    const f = state.filter.toLowerCase();
+    return (auditData.tool||'').toLowerCase().includes(f) || (auditData.summary||'').toLowerCase().includes(f);
+  }
+  return true;
+}
+
+// Log rendering
+function fmtJson(obj) {
+  if (!obj || typeof obj !== 'object') return esc(String(obj));
+  const raw = JSON.stringify(obj, null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return raw.replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="json-str">"$1"</span>')
+    .replace(/: (\d+\.?\d*)/g, ': <span class="json-num">$1</span>');
+}
+
+function appendLogEntry(sid, data) {
+  const wrap = document.createElement('div');
+  wrap.className = 'log-entry-wrap';
+
+  const el = document.createElement('div');
+  el.className = 'log-entry'+(data.blocked?' blocked':'');
+  el.dataset.tool = data.tool||'';
+  el.dataset.session = sid;
+  const lc = data.latency_ms>10000?' very-slow':data.latency_ms>3000?' slow':'';
+  const showTag = !state.selectedSession;
+  const summary = data.summary||'';
+  const metaRow =
+    '<div class="log-entry-meta">'+
+    (showTag ? '<div class="log-session-tag" style="background:'+getSessionColor(sid)+'"></div>' : '')+
+    '<span class="log-ts">'+fmtTime(data.ts)+'</span>'+
+    '<span class="log-tool">'+esc(data.tool)+'</span>'+
+    '<span class="log-latency'+lc+'">'+fmtLatency(data.latency_ms)+'</span>'+
+    (data.blocked?'<span class="log-blocked-tag">BLOCKED</span>':'')+
+    '</div>';
+  const summaryRow = summary ? '<div class="log-summary">'+esc(summary)+'</div>' : '';
+  el.innerHTML = metaRow + summaryRow;
+  wrap.appendChild(el);
+
+  if (data.tool_input && Object.keys(data.tool_input).length > 0) {
+    const detail = document.createElement('div');
+    detail.className = 'log-detail';
+    detail.innerHTML = '<pre>'+fmtJson(data.tool_input)+'</pre>';
+    wrap.appendChild(detail);
+
+    // Insert expand indicator into meta row
+    const metaEl = el.querySelector('.log-entry-meta');
+    const indicator = document.createElement('span');
+    indicator.className = 'log-expand';
+    indicator.textContent = '▶';
+    metaEl.insertBefore(indicator, metaEl.firstChild);
+
+    indicator.addEventListener('click', () => {
+      const open = detail.classList.toggle('open');
+      indicator.textContent = open ? '▼' : '▶';
+      indicator.classList.toggle('open', open);
+    });
+  }
+
+  logStream.appendChild(wrap);
+  if (state.autoScroll) logStream.scrollTop = logStream.scrollHeight;
+}
+
+function appendTaskMarker(sid, data, status) {
+  const id = 'tm-'+sid+'-'+data.task_num+'-'+status;
+  if (document.getElementById(id)) return;
+  const el = document.createElement('div');
+  el.className = 'task-marker '+status;
+  el.id = id;
+  const label = status==='active'?'Started':status==='done'?'Done':'Failed';
+  const showTag = !state.selectedSession;
+  el.innerHTML =
+    (showTag?'<div class="log-session-tag" style="background:'+getSessionColor(sid)+'"></div>':'')+
+    'Task '+data.task_num+': '+esc(data.task_title)+
+    ' <span style="margin-left:auto;font-size:10px;font-weight:400;opacity:0.5">'+label+'</span>';
+  logStream.appendChild(el);
+  if (state.autoScroll) logStream.scrollTop = logStream.scrollHeight;
+}
+
+function rebuildLog() {
+  logStream.innerHTML = '';
+  // Collect all events, sort by epoch/ts, render
+  const events = [];
+  for (const [sid, s] of state.sessions) {
+    for (const e of s.auditEvents) events.push({ type:'audit', sid, data:e, epoch: e.epoch||0 });
+    for (const e of s.progressEvents) {
+      if (['task_start','task_end','task_failed'].includes(e.event)) {
+        events.push({ type:'progress', sid, data:e, epoch: new Date(e.ts).getTime()/1000||0 });
+      }
+    }
+  }
+  events.sort((a,b) => a.epoch - b.epoch);
+  for (const ev of events) {
+    if (ev.type==='audit' && matchesFilter(ev.sid, ev.data)) appendLogEntry(ev.sid, ev.data);
+    else if (ev.type==='progress' && matchesFilter(ev.sid, null)) {
+      const status = ev.data.event==='task_start'?'active':ev.data.event==='task_end'?'done':'failed';
+      appendTaskMarker(ev.sid, ev.data, status);
+    }
+  }
+  updateLogCount();
+}
+
+function updateLogCount() {
+  let total = 0;
+  for (const [sid, s] of state.sessions) {
+    if (!state.selectedSession || state.selectedSession===sid) total += s.auditEvents.length;
+  }
+  logCountEl.textContent = total + ' events';
+}
+
+// Session list
+function renderSessionList() {
+  const sorted = [...state.sessions.entries()].sort((a,b) => {
+    const so = {running:0,waiting:1,failed:2,completed:3};
+    const sa = so[a[1].summary.status]??4, sb = so[b[1].summary.status]??4;
+    if (sa!==sb) return sa-sb;
+    return (b[1].summary.started_at||'').localeCompare(a[1].summary.started_at||'');
+  });
+  let html = '';
+  for (const [id, s] of sorted) {
+    const sel = state.selectedSession===id?' selected':'';
+    const st = s.summary.status||'waiting';
+    html +=
+      '<div class="session-item'+sel+'" data-id="'+esc(id)+'">'+
+      '<div class="session-item-top">'+
+      '<span class="session-dot '+st+'"></span>'+
+      '<span class="session-name">'+esc(s.summary.project_name)+'</span>'+
+      '<span class="session-mode">'+esc(s.summary.mode)+'</span>'+
+      '</div>'+
+      '<div class="session-meta">'+
+      '<span>'+fmtCost(s.summary.cost)+'</span>'+
+      '<span>'+s.summary.calls+' calls</span>'+
+      '</div></div>';
+  }
+  if (!html) html = '<div class="no-sessions">No sessions yet.<br>Start a Walter container to see it here.</div>';
+  sessionListEl.innerHTML = html;
+
+  // Bind clicks
+  sessionListEl.querySelectorAll('.session-item').forEach(el => {
+    el.addEventListener('click', () => selectSession(el.dataset.id));
+  });
+}
+
+function selectSession(id) {
+  state.selectedSession = id;
+  allSessionsBtn.classList.toggle('selected', !id);
+  renderSessionList();
+  rebuildLog();
+  updatePlanSidebar();
+  updateCostBadge();
+  updateMetrics();
+  headerSession.textContent = id ? (state.sessions.get(id)?.summary.project_name || id) : '';
+  if (id) loadPlan(id);
+}
+
+allSessionsBtn.addEventListener('click', () => selectSession(null));
+
+// Plan sidebar
+function loadPlan(sessionId) {
+  fetch('/api/plan?session='+encodeURIComponent(sessionId))
+    .then(r=>r.json())
+    .then(data => {
+      if (state.selectedSession===sessionId) updatePlanSidebarWithTasks(sessionId, data.tasks||[]);
+    })
+    .catch(()=>{});
+}
+
+function updatePlanSidebar() {
+  if (!state.selectedSession) {
+    planBody.innerHTML = '<div class="empty-state">Select a session to view plan</div>';
+    return;
+  }
+  const s = state.sessions.get(state.selectedSession);
+  if (!s) return;
+  // Use cached plan or show loading
+  loadPlan(state.selectedSession);
+}
+
+function updatePlanSidebarWithTasks(sessionId, tasks) {
+  if (state.selectedSession !== sessionId) return;
+  if (!tasks.length) { planBody.innerHTML = '<div class="empty-state">No plan</div>'; return; }
+  const s = state.sessions.get(sessionId);
+  const statuses = {};
+  if (s) for (const ev of s.progressEvents) {
+    if (ev.event==='task_start') statuses[ev.task_num]='active';
+    if (ev.event==='task_end') statuses[ev.task_num]='done';
+    if (ev.event==='task_failed') statuses[ev.task_num]='failed';
+  }
+  const icons = {pending:'&#9675;',active:'&#9679;',done:'&#10003;',failed:'&#10007;'};
+  planBody.innerHTML = tasks.map(t => {
+    const st = statuses[t.num]||'pending';
+    return '<div class="plan-task '+st+'"><span class="plan-task-icon '+st+'">'+icons[st]+'</span>'+
+      '<span class="plan-task-title">Task '+t.num+': '+esc(t.title)+'</span></div>';
+  }).join('');
+}
+
+// Metrics
+function updateMetrics() {
+  let calls=0, blocked=0, toolCounts={}, costData=null, startEpoch=null;
+  for (const [sid, s] of state.sessions) {
+    if (state.selectedSession && state.selectedSession!==sid) continue;
+    calls += s.auditEvents.length;
+    blocked += s.blockedCount;
+    for (const [t,c] of Object.entries(s.toolCounts)) toolCounts[t]=(toolCounts[t]||0)+c;
+    if (s.costData) {
+      if (!costData) costData = { total_input_tokens:0, total_output_tokens:0 };
+      costData.total_input_tokens += s.costData.total_input_tokens||0;
+      costData.total_output_tokens += s.costData.total_output_tokens||0;
+    }
+    if (s.auditEvents.length>0) {
+      const first = s.auditEvents[0].epoch;
+      if (first && (!startEpoch || first<startEpoch)) startEpoch=first;
+    }
+  }
+  document.getElementById('mCalls').textContent = calls;
+  document.getElementById('mBlocked').textContent = blocked;
+  document.getElementById('mInput').textContent = costData?fmtTokens(costData.total_input_tokens):'0';
+  document.getElementById('mOutput').textContent = costData?fmtTokens(costData.total_output_tokens):'0';
+  if (calls>1 && startEpoch) {
+    const mins = (Date.now()/1000 - startEpoch)/60;
+    document.getElementById('mRate').textContent = mins>0?(calls/mins).toFixed(1):'0';
+  }
+  // Top tools
+  const sorted = Object.entries(toolCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const topToolsEl = document.getElementById('topTools');
+  if (sorted.length) {
+    const max = sorted[0][1];
+    topToolsEl.innerHTML = sorted.map(([n,c])=>
+      '<div class="top-tool"><div class="top-tool-bar" style="width:'+Math.max(8,c/max*80)+'px"></div>'+
+      '<span class="top-tool-name">'+esc(n)+'</span><span class="top-tool-count">'+c+'</span></div>'
+    ).join('');
+  }
+}
+
+// Cost badge
+function updateCostBadge() {
+  let total=0, budget=0;
+  for (const [sid, s] of state.sessions) {
+    if (state.selectedSession && state.selectedSession!==sid) continue;
+    total += s.summary.cost||0;
+    budget += s.summary.cost_budget||5;
+  }
+  costBadgeEl.textContent = fmtCost(total);
+  costBadgeEl.className = 'cost-badge';
+  // For single session, show against budget
+  if (state.selectedSession) {
+    const s = state.sessions.get(state.selectedSession);
+    if (s) {
+      const b = s.summary.cost_budget||5;
+      costBadgeEl.textContent = fmtCost(total)+' / '+fmtCost(b);
+      if (total>b) costBadgeEl.classList.add('exceeded');
+      else if (total>b*0.8) costBadgeEl.classList.add('warning');
+    }
+  }
+}
+
+// Elapsed timer
+setInterval(() => {
+  let earliest = null;
+  for (const [sid, s] of state.sessions) {
+    if (state.selectedSession && state.selectedSession!==sid) continue;
+    if (s.summary.started_at) {
+      const t = new Date(s.summary.started_at).getTime();
+      if (!isNaN(t) && (!earliest||t<earliest)) earliest=t;
+    }
+  }
+  elapsedEl.textContent = earliest ? fmtElapsed(Date.now()-earliest) : '00:00:00';
+}, 1000);
+
+// Auto-scroll
+logStream.addEventListener('scroll', () => {
+  const atBottom = logStream.scrollHeight-logStream.scrollTop-logStream.clientHeight<30;
+  if (!atBottom&&state.autoScroll) { state.autoScroll=false; autoScrollBtn.classList.remove('active'); }
+  else if (atBottom&&!state.autoScroll) { state.autoScroll=true; autoScrollBtn.classList.add('active'); }
+});
+autoScrollBtn.addEventListener('click', () => {
+  state.autoScroll=!state.autoScroll;
+  autoScrollBtn.classList.toggle('active', state.autoScroll);
+  if (state.autoScroll) logStream.scrollTop=logStream.scrollHeight;
+});
+
+// Search
+let searchTimer;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { state.filter=searchInput.value; rebuildLog(); }, 150);
+});
+
+// SSE
+function connectSSE() {
+  const es = new EventSource('/events');
+  es.addEventListener('session', e => { try { handleSessionEvent(JSON.parse(e.data)); } catch{} });
+  es.addEventListener('audit', e => { try { handleAuditEvent(JSON.parse(e.data)); } catch{} });
+  es.addEventListener('progress', e => { try { handleProgressEvent(JSON.parse(e.data)); } catch{} });
+  es.addEventListener('cost', e => { try { handleCostEvent(JSON.parse(e.data)); } catch{} });
+}
+
+connectSSE();
+})();
+</script>
+</body>
+</html>

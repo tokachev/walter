@@ -10,6 +10,8 @@ RUN usermod -d /opt/claude-home node
 
 RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=3
+
 RUN pip install --break-system-packages chromadb rank_bm25 networkx
 
 # MCP server: read-only Snowflake access
@@ -50,6 +52,9 @@ RUN chmod +x /opt/plannotator/hook.sh
 # Plan executor: sequential task runner for markdown plans
 COPY plan-executor.sh /opt/plan-executor.sh
 RUN chmod +x /opt/plan-executor.sh
+
+# Dashboard: real-time web UI for plan execution monitoring
+COPY dashboard/ /opt/dashboard/
 
 # Review executor: post-plan code review
 COPY review/ /opt/review/
