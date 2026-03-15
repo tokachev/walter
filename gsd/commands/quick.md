@@ -26,7 +26,7 @@ Launch a focused Claude scan in the background:
 Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Do a compact investigation for this quick task: {task description from $ARGUMENTS}. Focus only on files, patterns, dependencies, and validation paths directly needed for implementation. Write findings to .claude/research/quick-research-claude.md")
 ```
 
-Run Codex in parallel:
+Run Codex in parallel — execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip to merge and note degraded mode:
 
 ```bash
 mkdir -p .claude/research

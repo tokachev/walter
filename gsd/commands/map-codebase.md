@@ -33,7 +33,7 @@ Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Ident
 
 ### Agent 5: Full Analysis (Codex)
 
-Run Codex in parallel with Claude agents:
+Run Codex in parallel with Claude agents — execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode in the final summary:
 
 ```bash
 mkdir -p .claude/research

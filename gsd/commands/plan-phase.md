@@ -25,6 +25,8 @@ Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Resea
 
 ### Codex Research
 
+Execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found or the command fails, skip to Merge Research and note degraded mode.
+
 ```bash
 mkdir -p .claude/research
 codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/phase-{N}-research-codex.md

@@ -65,7 +65,7 @@ Requirements for the plan:
 )
 ```
 
-Codex planner:
+Codex planner — execute the following command using the Bash tool. First check that codex is available (`command -v codex`). If codex is not found, skip this step and note degraded mode:
 
 ```bash
 codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee {CODEX_DRAFT_PATH}
