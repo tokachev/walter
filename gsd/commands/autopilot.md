@@ -27,7 +27,7 @@ If working with existing code, spawn codebase-researcher:
 Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to the requested project. Write findings to .claude/research/gsd-codebase-overview-claude.md")
 ```
 
-Run Codex in parallel:
+Run Codex in parallel — execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode:
 
 ```bash
 mkdir -p .claude/research
@@ -72,6 +72,8 @@ If the phase touches existing code, run Claude + Codex research in parallel:
 ```
 Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on the files, dependencies, patterns, and risks most likely to affect implementation. Write findings to .claude/research/phase-{N}-research-claude.md")
 ```
+
+Execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode:
 
 ```bash
 mkdir -p .claude/research
