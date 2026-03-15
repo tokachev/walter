@@ -7,6 +7,12 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 
 Full interactive GSD planning (with discussions and clarifications), but instead of executing phase-by-phase, all phases are planned upfront and exported into one self-contained plan file for autonomous execution in a fresh Walter session.
 
+## Step 0: Load Lessons
+
+Check if `tasks/lessons.md` exists:
+- **If yes**: Read the `## Rules Index` section. Keep these rules in context for all planning decisions. Flag any rules that are directly relevant to the current project scope.
+- **If no**: Skip — no lessons captured yet.
+
 ## Step 1: Project Setup
 
 Check if `.planning/` already exists:
