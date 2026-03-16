@@ -499,10 +499,21 @@ PLANNOTATOR_PORT_BASE="${WALTER_PLANNOTATOR_PORT:-19440}"
 PLANNOTATOR_PORT_FILE="/tmp/.walter-plannotator-ports"
 touch "$PLANNOTATOR_PORT_FILE"
 
+is_port_in_use() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+  elif command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -q ":${port} "
+  else
+    netstat -an 2>/dev/null | grep -q "[.:]${port} .*LISTEN"
+  fi
+}
+
 allocate_plannotator_port() {
   local base="$1" port
   for port in $(seq "$base" $((base + 100))); do
-    if ! ss -tln 2>/dev/null | grep -q ":${port} " && \
+    if ! is_port_in_use "$port" && \
        ! grep -q "^${port}$" "$PLANNOTATOR_PORT_FILE" 2>/dev/null; then
       echo "$port" >> "$PLANNOTATOR_PORT_FILE"
       echo "$port"
