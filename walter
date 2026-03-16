@@ -27,6 +27,8 @@ fi
 
 IMAGE_NAME="walter"
 IMAGE_TAG="latest"
+SANDBOX_TEMPLATE="walter-sandbox"
+SANDBOX_TEMPLATE_TAG="latest"
 
 PROJECT_DIR=""
 MEMORY_DIR=""
@@ -42,6 +44,7 @@ PLAN_RETRY_COUNT=""
 COST_BUDGET=""
 REVIEW=false
 REVIEW_ONLY=false
+SANDBOX_MODE=""  # auto-detect by default; "sandbox" or "legacy" to force
 
 usage() {
   cat << 'EOF'
@@ -68,6 +71,8 @@ Options:
   --review                 Run plan then review (code review after execution)
   --review-only            Skip plan execution; run review only
   --build                  Rebuild Docker image
+  --sandbox                Force Docker Sandbox mode (microVM isolation)
+  --legacy                 Force legacy container mode (iptables isolation)
   -h, --help               Show this help
 
 Subcommands:
@@ -113,6 +118,8 @@ while [[ $# -gt 0 ]]; do
     --review)       REVIEW=true; shift ;;
     --review-only)  REVIEW_ONLY=true; shift ;;
     --build)        BUILD=true; shift ;;
+    --sandbox)      SANDBOX_MODE="sandbox"; shift ;;
+    --legacy)       SANDBOX_MODE="legacy"; shift ;;
     -h|--help)      usage ;;
     *)              CLAUDE_ARGS+=("$1"); shift ;;
   esac
@@ -139,14 +146,36 @@ if [ -n "$PLAN_FILE" ]; then
   fi
   # Convert to path relative to project dir for container mapping
   PLAN_FILE_REL="${PLAN_FILE#"$PROJECT_DIR/"}"
+  # Container mode maps to /workspace; sandbox uses same host path
   PLAN_FILE_CONTAINER="/workspace/$PLAN_FILE_REL"
 fi
 
+# ── Sandbox detection ────────────────────────────────────────
+detect_sandbox() {
+  if [ "$SANDBOX_MODE" = "legacy" ]; then return 1; fi
+  if [ "$SANDBOX_MODE" = "sandbox" ]; then return 0; fi
+  # Auto-detect: check if docker sandbox CLI is available
+  docker sandbox ls &>/dev/null 2>&1
+}
+
+USE_SANDBOX=false
+if detect_sandbox; then
+  USE_SANDBOX=true
+fi
+
 # ── Build image if needed ────────────────────────────────────
-if [ "$BUILD" = true ] || ! docker image inspect "$IMAGE_NAME:$IMAGE_TAG" &>/dev/null; then
-  echo "Building Docker image..."
-  docker build -t "$IMAGE_NAME:$IMAGE_TAG" "$SCRIPT_DIR"
-  echo ""
+if [ "$USE_SANDBOX" = true ]; then
+  if [ "$BUILD" = true ] || ! docker image inspect "$SANDBOX_TEMPLATE:$SANDBOX_TEMPLATE_TAG" &>/dev/null; then
+    echo "Building sandbox template..."
+    docker build -t "$SANDBOX_TEMPLATE:$SANDBOX_TEMPLATE_TAG" -f "$SCRIPT_DIR/Dockerfile.sandbox" "$SCRIPT_DIR"
+    echo ""
+  fi
+else
+  if [ "$BUILD" = true ] || ! docker image inspect "$IMAGE_NAME:$IMAGE_TAG" &>/dev/null; then
+    echo "Building Docker image..."
+    docker build -t "$IMAGE_NAME:$IMAGE_TAG" "$SCRIPT_DIR"
+    echo ""
+  fi
 fi
 
 # ── Mounts ───────────────────────────────────────────────────
@@ -524,20 +553,21 @@ cat > "$SESSION_DIR/session.json" << SESEOF
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "plan_file": "${PLAN_FILE_REL:-}",
   "cost_budget": ${COST_BUDGET:-5},
-  "mode": "$([ -n "$PLAN_FILE" ] && echo "plan" || echo "interactive")"
+  "mode": "$([ -n "$PLAN_FILE" ] && echo "plan" || echo "interactive")",
+  "runtime": "$([ "$USE_SANDBOX" = true ] && echo "sandbox" || echo "container")"
 }
 SESEOF
 
 # Mount session dir as /var/log/walter/ inside container
 MOUNTS+=(-v "$SESSION_DIR:/var/log/walter")
 
-# ── Entrypoint args (network-lock allowlist) ─────────────────
-ENTRYPOINT_ARGS=()
-[ -n "$EXTRA_DOMAINS" ] && ENTRYPOINT_ARGS+=(--allowlist "$EXTRA_DOMAINS")
-
 # ── Banner ───────────────────────────────────────────────────
 echo "══════════════════════════════════════════════════════"
+if [ "$USE_SANDBOX" = true ]; then
+echo "  walter (Docker Sandbox)"
+else
 echo "  walter (Docker + Network Lock)"
+fi
 echo ""
 if [ "$REVIEW_ONLY" = true ]; then
 echo "  Mode:        REVIEW ONLY"
@@ -603,9 +633,14 @@ echo "     Config: $PROJECT_DIR/.env"
 echo ""
 fi
 echo "  Security:"
+if [ "$USE_SANDBOX" = true ]; then
+echo "     microVM sandbox isolation"
+echo "     network proxy (HTTPS domain filtering)"
+else
 echo "     iptables + ip6tables firewall"
-echo "     credential-guard hooks"
 echo "     no-new-privileges"
+fi
+echo "     credential-guard hooks"
 echo ""
 echo "  Guardrails:"
 echo "     audit log (JSONL: /var/log/walter/audit.jsonl)"
@@ -619,21 +654,193 @@ echo "     View: walter dashboard"
 echo "══════════════════════════════════════════════════════"
 echo ""
 
-# ── Interactive flag ─────────────────────────────────────────
-INTERACTIVE_FLAG="-it"
-[ -t 0 ] || INTERACTIVE_FLAG="-i"
+# ══════════════════════════════════════════════════════════════
+#  Launch: sandbox or container mode
+# ══════════════════════════════════════════════════════════════
 
+launch_container() {
+  # ── Entrypoint args (network-lock allowlist) ─────────────────
+  ENTRYPOINT_ARGS=()
+  [ -n "$EXTRA_DOMAINS" ] && ENTRYPOINT_ARGS+=(--allowlist "$EXTRA_DOMAINS")
+
+  # ── Interactive flag ─────────────────────────────────────────
+  INTERACTIVE_FLAG="-it"
+  [ -t 0 ] || INTERACTIVE_FLAG="-i"
+
+  DOCKER_EXIT=0
+  docker run --rm $INTERACTIVE_FLAG \
+    --name "walter-$SESSION_ID" \
+    --cap-add NET_ADMIN \
+    "${MOUNTS[@]}" \
+    "${ENV_VARS[@]}" \
+    --tmpfs /tmp:exec \
+    --security-opt no-new-privileges \
+    "$IMAGE_NAME:$IMAGE_TAG" \
+    "${ENTRYPOINT_ARGS[@]}" \
+    "${CLAUDE_ARGS[@]}" || DOCKER_EXIT=$?
+
+  return $DOCKER_EXIT
+}
+
+launch_sandbox() {
+  local SANDBOX_NAME="walter-${SESSION_ID}"
+  local LOG_SYNC_PID=""
+
+  # Cleanup handler for sandbox
+  sandbox_cleanup() {
+    # Kill log sync background process
+    [ -n "$LOG_SYNC_PID" ] && kill "$LOG_SYNC_PID" 2>/dev/null || true
+
+    # Remove sandbox
+    docker sandbox rm "$SANDBOX_NAME" 2>/dev/null || true
+  }
+  trap sandbox_cleanup EXIT
+
+  # 1. Create sandbox with custom template
+  echo "Creating sandbox: $SANDBOX_NAME..."
+  docker sandbox create --name "$SANDBOX_NAME" \
+    -t "$SANDBOX_TEMPLATE:$SANDBOX_TEMPLATE_TAG" \
+    claude "$PROJECT_DIR"
+
+  # 2. Configure network proxy (replaces iptables)
+  echo "Configuring network proxy..."
+  docker sandbox network proxy "$SANDBOX_NAME" --policy deny \
+    --allow-host api.anthropic.com \
+    --allow-host console.anthropic.com \
+    --allow-host claude.ai
+
+  # Add extra domains to network proxy
+  if [ -n "$EXTRA_DOMAINS" ]; then
+    IFS=',' read -ra DOMS <<< "$EXTRA_DOMAINS"
+    for domain in "${DOMS[@]}"; do
+      domain=$(echo "$domain" | xargs)
+      [ -n "$domain" ] && docker sandbox network proxy "$SANDBOX_NAME" --allow-host "$domain"
+    done
+  fi
+
+  # 3. Inject secrets via docker sandbox exec (not workspace — security)
+  echo "Injecting secrets..."
+  docker sandbox exec "$SANDBOX_NAME" mkdir -p /opt/secrets
+
+  if [ -n "$SNOWFLAKE_KEY" ] && [ -f "$SNOWFLAKE_KEY" ]; then
+    docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /opt/secrets/snowflake_key.pem" < "$SNOWFLAKE_KEY"
+  fi
+  if [ -n "$BQ_CREDENTIALS" ] && [ -f "$BQ_CREDENTIALS" ]; then
+    docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /opt/secrets/bq-credentials.json" < "$BQ_CREDENTIALS"
+  fi
+  if [ -n "$BQ_MCP_CONFIG_RESOLVED" ] && [ -f "$BQ_MCP_CONFIG_RESOLVED" ]; then
+    docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /opt/secrets/bq-mcp-config.json" < "$BQ_MCP_CONFIG_RESOLVED"
+
+    # Also inject SA key if referenced in config
+    if [ -n "${SA_KEY_PATH:-}" ] && [ -f "$SA_KEY_PATH" ]; then
+      docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /opt/secrets/bq-sa-key.json" < "$SA_KEY_PATH"
+    fi
+  fi
+  if [ "$GCLOUD_ADC" = true ]; then
+    ADC_FILE="$HOME/.config/gcloud/application_default_credentials.json"
+    if [ -f "$ADC_FILE" ]; then
+      docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /opt/secrets/gcloud-adc.json" < "$ADC_FILE"
+    fi
+  fi
+  if [ -f "${CODEX_HOME:-$HOME/.codex}/auth.json" ]; then
+    docker sandbox exec "$SANDBOX_NAME" mkdir -p "\$HOME/.codex"
+    docker sandbox exec "$SANDBOX_NAME" bash -c "cat > \$HOME/.codex/auth.json" < "${CODEX_HOME:-$HOME/.codex}/auth.json"
+  fi
+
+  # 4. Copy host Claude config into sandbox (via exec, not workspace)
+  echo "Copying host configuration..."
+  docker sandbox exec "$SANDBOX_NAME" mkdir -p /tmp/walter-host-config
+
+  CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
+  if [ -f "$CLAUDE_HOME/settings.json" ]; then
+    docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /tmp/host-settings.json" < "$CLAUDE_HOME/settings.json"
+  fi
+  if [ -f "$CLAUDE_HOME/CLAUDE.md" ]; then
+    docker sandbox exec "$SANDBOX_NAME" bash -c "cat > /tmp/walter-host-config/CLAUDE.md" < "$CLAUDE_HOME/CLAUDE.md"
+  fi
+  # Copy host agent/command/skill/rule directories
+  for dir_name in agents commands skills rules; do
+    if [ -d "$CLAUDE_HOME/$dir_name" ]; then
+      docker sandbox exec "$SANDBOX_NAME" mkdir -p "/tmp/walter-host-config/$dir_name"
+      for f in "$CLAUDE_HOME/$dir_name"/*; do
+        [ -e "$f" ] || continue
+        if [ -f "$f" ]; then
+          docker sandbox exec "$SANDBOX_NAME" bash -c "cat > '/tmp/walter-host-config/$dir_name/$(basename "$f")'" < "$f"
+        elif [ -d "$f" ]; then
+          docker sandbox exec "$SANDBOX_NAME" mkdir -p "/tmp/walter-host-config/$dir_name/$(basename "$f")"
+          for sf in "$f"/*; do
+            [ -f "$sf" ] || continue
+            docker sandbox exec "$SANDBOX_NAME" bash -c "cat > '/tmp/walter-host-config/$dir_name/$(basename "$f")/$(basename "$sf")'" < "$sf"
+          done
+        fi
+      done
+    fi
+  done
+
+  # 5. Build env flags for sandbox exec
+  local SANDBOX_ENV_FLAGS=()
+  for env_entry in "${ENV_VARS[@]}"; do
+    # ENV_VARS contains alternating -e and KEY=VAL entries
+    SANDBOX_ENV_FLAGS+=("$env_entry")
+  done
+
+  # For sandbox mode, plan file path is the host absolute path (same inside sandbox)
+  if [ -n "$PLAN_FILE" ]; then
+    # Override the container path — sandbox uses host absolute paths
+    SANDBOX_ENV_FLAGS=()
+    for env_entry in "${ENV_VARS[@]}"; do
+      if [[ "$env_entry" == "WALTER_PLAN_FILE="* ]]; then
+        SANDBOX_ENV_FLAGS+=(-e "WALTER_PLAN_FILE=$PLAN_FILE")
+      else
+        SANDBOX_ENV_FLAGS+=("$env_entry")
+      fi
+    done
+  fi
+
+  # 6. Run setup script inside sandbox
+  echo "Running sandbox setup..."
+  docker sandbox exec "${SANDBOX_ENV_FLAGS[@]}" "$SANDBOX_NAME" /opt/sandbox-setup.sh
+
+  # 7. Start log sync background process
+  (
+    while docker sandbox ls 2>/dev/null | grep -q "$SANDBOX_NAME"; do
+      docker sandbox exec "$SANDBOX_NAME" cat /var/log/walter/audit.jsonl > "$SESSION_DIR/audit.jsonl" 2>/dev/null || true
+      docker sandbox exec "$SANDBOX_NAME" cat /var/log/walter/progress.jsonl > "$SESSION_DIR/progress.jsonl" 2>/dev/null || true
+      docker sandbox exec "$SANDBOX_NAME" cat /var/log/walter/cost.json > "$SESSION_DIR/cost.json" 2>/dev/null || true
+      sleep 2
+    done
+  ) &
+  LOG_SYNC_PID=$!
+
+  # 8. Launch
+  echo ""
+  DOCKER_EXIT=0
+  if [ -n "${PLAN_FILE:-}" ]; then
+    docker sandbox exec "${SANDBOX_ENV_FLAGS[@]}" "$SANDBOX_NAME" /opt/plan-executor.sh || DOCKER_EXIT=$?
+  elif [ "$REVIEW_ONLY" = true ]; then
+    docker sandbox exec "${SANDBOX_ENV_FLAGS[@]}" "$SANDBOX_NAME" /opt/review/review-executor.sh || DOCKER_EXIT=$?
+  else
+    # Build MCP config arg string for interactive mode
+    MCP_ARG=""
+    docker sandbox exec "$SANDBOX_NAME" test -f /tmp/mcp-config.json && MCP_ARG="--mcp-config /tmp/mcp-config.json"
+    docker sandbox run "$SANDBOX_NAME" -- --dangerously-skip-permissions --effort high $MCP_ARG "${CLAUDE_ARGS[@]}" || DOCKER_EXIT=$?
+  fi
+
+  # Final log sync before cleanup
+  docker sandbox exec "$SANDBOX_NAME" cat /var/log/walter/audit.jsonl > "$SESSION_DIR/audit.jsonl" 2>/dev/null || true
+  docker sandbox exec "$SANDBOX_NAME" cat /var/log/walter/progress.jsonl > "$SESSION_DIR/progress.jsonl" 2>/dev/null || true
+  docker sandbox exec "$SANDBOX_NAME" cat /var/log/walter/cost.json > "$SESSION_DIR/cost.json" 2>/dev/null || true
+
+  return $DOCKER_EXIT
+}
+
+# ── Run ──────────────────────────────────────────────────────
 DOCKER_EXIT=0
-docker run --rm $INTERACTIVE_FLAG \
-  --name "walter-$SESSION_ID" \
-  --cap-add NET_ADMIN \
-  "${MOUNTS[@]}" \
-  "${ENV_VARS[@]}" \
-  --tmpfs /tmp:exec \
-  --security-opt no-new-privileges \
-  "$IMAGE_NAME:$IMAGE_TAG" \
-  "${ENTRYPOINT_ARGS[@]}" \
-  "${CLAUDE_ARGS[@]}" || DOCKER_EXIT=$?
+if [ "$USE_SANDBOX" = true ]; then
+  launch_sandbox || DOCKER_EXIT=$?
+else
+  launch_container || DOCKER_EXIT=$?
+fi
 
 # ── Cleanup session directory ────────────────────────────────
 rm -rf "$SESSION_DIR"
