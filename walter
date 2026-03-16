@@ -494,7 +494,33 @@ if [ -n "$BQ_CREDENTIALS" ]; then
   ENV_VARS+=(-e "BQ_CREDENTIALS_PATH=/opt/secrets/bq-credentials.json")
 fi
 
-# ── Plannotator (disabled — no port binding) ──────────────────
+# ── Plannotator (dynamic port allocation) ────────────────────
+PLANNOTATOR_PORT_BASE="${WALTER_PLANNOTATOR_PORT:-19440}"
+PLANNOTATOR_PORT_FILE="/tmp/.walter-plannotator-ports"
+touch "$PLANNOTATOR_PORT_FILE"
+
+allocate_plannotator_port() {
+  local base="$1" port
+  for port in $(seq "$base" $((base + 100))); do
+    if ! ss -tln 2>/dev/null | grep -q ":${port} " && \
+       ! grep -q "^${port}$" "$PLANNOTATOR_PORT_FILE" 2>/dev/null; then
+      echo "$port" >> "$PLANNOTATOR_PORT_FILE"
+      echo "$port"
+      return 0
+    fi
+  done
+  return 1
+}
+
+PLANNOTATOR_PORT=$(allocate_plannotator_port "$PLANNOTATOR_PORT_BASE") || true
+if [ -n "${PLANNOTATOR_PORT:-}" ]; then
+  ENV_VARS+=(-e "PLANNOTATOR_PORT=$PLANNOTATOR_PORT")
+  ENV_VARS+=(-e "PLANNOTATOR_REMOTE=1")
+  DOCKER_PORT_FLAGS=(-p "${PLANNOTATOR_PORT}:${PLANNOTATOR_PORT}")
+else
+  echo "WARNING: Could not allocate plannotator port (range ${PLANNOTATOR_PORT_BASE}-$((PLANNOTATOR_PORT_BASE+100)) exhausted)" >&2
+  DOCKER_PORT_FLAGS=()
+fi
 
 # ── Plan env vars ─────────────────────────────────────────────
 if [ -n "$PLAN_FILE" ]; then
@@ -524,7 +550,8 @@ cat > "$SESSION_DIR/session.json" << SESEOF
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "plan_file": "${PLAN_FILE_REL:-}",
   "cost_budget": ${COST_BUDGET:-5},
-  "mode": "$([ -n "$PLAN_FILE" ] && echo "plan" || echo "interactive")"
+  "mode": "$([ -n "$PLAN_FILE" ] && echo "plan" || echo "interactive")",
+  "plannotator_port": ${PLANNOTATOR_PORT:-null}
 }
 SESEOF
 
@@ -613,6 +640,12 @@ echo "     circuit breaker (threshold: ${WALTER_CB_THRESHOLD:-50} calls/${WALTER
 echo "     cost budget (\$${COST_BUDGET:-5} per run)"
 echo "     SQL guardrail (blocks DROP, TRUNCATE, DELETE w/o WHERE)"
 echo ""
+if [ -n "${PLANNOTATOR_PORT:-}" ]; then
+echo "  Plan Review:"
+echo "     http://localhost:${PLANNOTATOR_PORT}"
+echo "     (activates on ExitPlanMode)"
+echo ""
+fi
 echo "  Session: $SESSION_ID"
 echo "     Logs: $SESSION_DIR"
 echo "     View: walter dashboard"
@@ -629,11 +662,18 @@ docker run --rm $INTERACTIVE_FLAG \
   --cap-add NET_ADMIN \
   "${MOUNTS[@]}" \
   "${ENV_VARS[@]}" \
+  "${DOCKER_PORT_FLAGS[@]}" \
   --tmpfs /tmp:exec \
   --security-opt no-new-privileges \
   "$IMAGE_NAME:$IMAGE_TAG" \
   "${ENTRYPOINT_ARGS[@]}" \
   "${CLAUDE_ARGS[@]}" || DOCKER_EXIT=$?
+
+# ── Release plannotator port ──────────────────────────────────
+if [ -n "${PLANNOTATOR_PORT:-}" ] && [ -f "$PLANNOTATOR_PORT_FILE" ]; then
+  grep -v "^${PLANNOTATOR_PORT}$" "$PLANNOTATOR_PORT_FILE" > "${PLANNOTATOR_PORT_FILE}.tmp" 2>/dev/null || true
+  mv "${PLANNOTATOR_PORT_FILE}.tmp" "$PLANNOTATOR_PORT_FILE" 2>/dev/null || true
+fi
 
 # ── Cleanup session directory ────────────────────────────────
 rm -rf "$SESSION_DIR"

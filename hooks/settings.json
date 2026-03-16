@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/plannotator/hook.sh",
+            "command": "plannotator",
             "timeout": 345600
           }
         ]
