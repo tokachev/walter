@@ -4,15 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Walter
 
-Docker sandbox for running Claude Code with network isolation (iptables), credential leak protection (PreToolUse hooks), cost guardrails, and built-in agents for data investigation. Everything runs inside a container — no host access to gcloud/aws/ssh.
+Docker sandbox for running Claude Code with network isolation, credential leak protection (PreToolUse hooks), cost guardrails, and built-in agents for data investigation. Everything runs inside a container or microVM sandbox — no host access to gcloud/aws/ssh.
+
+Two runtime modes:
+- **Sandbox mode** (default when available): Docker Sandbox microVM with HTTPS network proxy. Requires Docker Desktop 4.60+ on macOS/Windows.
+- **Legacy container mode**: Docker container with iptables firewall. Works on Linux and older Docker Desktop. Activated with `--legacy` flag.
 
 ## Build and Run
 
 ```bash
-# Build the Docker image
+# Build the Docker image (legacy container mode)
 docker build -t walter:latest .
 
-# Interactive mode
+# Build the sandbox template (sandbox mode)
+docker build -t walter-sandbox:latest -f Dockerfile.sandbox .
+
+# Interactive mode (auto-detects sandbox vs container)
 ./walter -d ./my-project
 
 # With a prompt
@@ -26,6 +33,12 @@ docker build -t walter:latest .
 
 # Allow extra network domains
 ./walter -a "pypi.org,files.pythonhosted.org" -d ./my-project
+
+# Force sandbox mode
+./walter --sandbox -d ./my-project
+
+# Force legacy container mode (iptables)
+./walter --legacy -d ./my-project
 
 # Real-time dashboard (runs on host, monitors all sessions)
 ./walter dashboard
@@ -43,6 +56,7 @@ Validate shell scripts and dashboard:
 ```bash
 bash -n walter
 bash -n network-lock.sh
+bash -n sandbox-setup.sh
 bash -n plan-executor.sh
 bash -n review/review-executor.sh
 node --check dashboard/server.js
@@ -52,11 +66,13 @@ node --check dashboard/server.js
 
 ### Execution layers (outer → inner)
 
-1. **`walter`** (bash) — Host-side Docker orchestrator. Parses flags, resolves credentials/mounts, assembles `docker run`. Sources auth from `./walter/.env`, project credentials from `<project>/.env`. Creates per-session log directories at `~/.walter/sessions/<project>-<timestamp>/` and mounts them into the container as `/var/log/walter/`. Also provides `walter dashboard` subcommand (host-side Node.js, no Docker).
+1. **`walter`** (bash) — Host-side Docker orchestrator. Parses flags, resolves credentials, and launches either a Docker Sandbox (`launch_sandbox`) or a legacy container (`launch_container`). Sources auth from `./walter/.env`, project credentials from `<project>/.env`. Creates per-session log directories at `~/.walter/sessions/<project>-<timestamp>/`. Also provides `walter dashboard` subcommand (host-side Node.js, no Docker).
 
-2. **`network-lock.sh`** (container entrypoint) — iptables firewall. Only `api.anthropic.com` allowed by default; extra domains via `--allowlist`. IPv6 fully blocked. Background DNS refresh every 5 min.
+2a. **Sandbox mode** — `docker sandbox create` with custom template (`Dockerfile.sandbox`). Network isolation via `docker sandbox network proxy` (HTTPS domain filtering). Secrets injected via `docker sandbox exec`. Setup handled by `sandbox-setup.sh` (MCP config, settings merge, agent/command merge). No iptables, no `NET_ADMIN`.
 
-3. **Claude Code** runs inside the container with:
+2b. **Legacy container mode** — `docker run` with `network-lock.sh` as entrypoint. iptables firewall, `--cap-add NET_ADMIN`, volume mounts. Only `api.anthropic.com` allowed by default; extra domains via `--allowlist`. IPv6 fully blocked. Background DNS refresh every 60s.
+
+3. **Claude Code** runs inside the container/sandbox with:
    - **PreToolUse hooks** (`hooks/settings.json` → installed to `$HOME/.claude/settings.json`):
      - `guardrails/hook.sh` (matcher: `.*`) — audit log + circuit breaker + cost budget check
      - `hooks/credential-guard.sh` (matchers: Write, Edit, Bash) — scans content for 40+ secret patterns via `scan-credentials.sh`
@@ -114,7 +130,7 @@ Planning flow is dual-model by design:
 ## Key conventions
 
 - **Auth flow**: Walter's own `.env` has `CLAUDE_CODE_OAUTH_TOKEN`. Project credentials (Snowflake, BigQuery, OpenAI) come from the project's `.env` via a safe parser (no `source`/`eval`).
-- **Container paths**: project → `/workspace`, secrets → `/opt/secrets/`, MCP servers → `/opt/mcp/`, hooks → `/opt/hooks/`, guardrails → `/opt/guardrails/`, session logs → `/var/log/walter/` (mounted from `~/.walter/sessions/<id>/`).
+- **Container paths**: project → `/workspace` (container) or host absolute path (sandbox), secrets → `/opt/secrets/`, MCP servers → `/opt/mcp/`, hooks → `/opt/hooks/`, guardrails → `/opt/guardrails/`, session logs → `/var/log/walter/`.
 - **Fail-open**: Both credential guard and guardrails fail-open (scanner errors don't block operations).
 - **Plan format**: Must use `### Task N: {title}` headers with `- [ ]` checklist items. Template at `docs/plans/TEMPLATE.md`.
 - **All shell scripts** use `set -e` (or `set -euo pipefail`). The `walter` launcher is the main orchestration entry point — all Docker flags, mounts, and env vars are assembled there.

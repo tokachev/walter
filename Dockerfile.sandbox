@@ -1,0 +1,97 @@
+FROM docker/sandbox-templates:claude-code
+
+USER root
+
+# Base template has: Node.js, Python 3, Git, jq, ripgrep, Docker CLI, GitHub CLI
+# Only install what's missing
+RUN apt-get update && apt-get install -y python3-pip curl && rm -rf /var/lib/apt/lists/*
+
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=3
+
+RUN pip install --break-system-packages chromadb rank_bm25 networkx
+
+# MCP server: read-only Snowflake access
+COPY mcp/ /opt/mcp/
+RUN pip install --break-system-packages -r /opt/mcp/requirements.txt
+
+# MCP server: BigQuery read/write access
+RUN pip install --break-system-packages -r /opt/mcp/bigquery/requirements.txt
+
+# Data Detective: autonomous data anomaly investigation agent
+COPY detective/ /opt/detective/
+RUN pip install --break-system-packages -r /opt/detective/requirements.txt
+
+ENV DISABLE_AUTOUPDATER=1
+
+# Pre-configure user state to skip onboarding/login screen
+RUN echo '{"theme":"dark","hasCompletedOnboarding":true}' > $HOME/.claude.json
+
+# Pre-download ChromaDB embedding model (79MB) so it works offline
+RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('warmup'); col.add(documents=['warmup'],ids=['1']); c.delete_collection('warmup'); print('Model cached')"
+
+# Native hooks: credential-guard scanner + hook script
+COPY hooks/ /opt/hooks/
+RUN chmod +x /opt/hooks/credential-guard.sh /opt/hooks/scan-credentials.sh
+
+# Guardrails: audit log, circuit breaker, cost tracker, SQL guard
+COPY guardrails/ /opt/guardrails/
+RUN chmod +x /opt/guardrails/hook.sh
+RUN mkdir -p /var/log/walter && chown agent:agent /var/log/walter
+
+# Plannotator: browser-based plan review UI
+COPY plannotator/ /opt/plannotator/
+RUN chmod +x /opt/plannotator/hook.sh
+
+# Plan executor: sequential task runner for markdown plans
+COPY plan-executor.sh /opt/plan-executor.sh
+RUN chmod +x /opt/plan-executor.sh
+
+# Dashboard: real-time web UI for plan execution monitoring
+COPY dashboard/ /opt/dashboard/
+
+# Review executor: post-plan code review
+COPY review/ /opt/review/
+RUN chmod +x /opt/review/review-executor.sh
+
+# GSD: commands and agents for spec-driven workflow
+COPY gsd/commands/ /opt/gsd/commands/
+COPY gsd/agents/ /opt/gsd/agents/
+
+# Install hooks configuration into Claude Code's global settings
+RUN mkdir -p $HOME/.claude \
+    && cp /opt/hooks/settings.json $HOME/.claude/settings.json
+
+# Install detective agent markdown for Claude Code
+RUN mkdir -p $HOME/.claude/agents \
+    && cp /opt/detective/data-detective.md $HOME/.claude/agents/data-detective.md
+
+# Install GSD commands and agents into Claude Code's config
+RUN mkdir -p $HOME/.claude/commands/gsd \
+    && cp /opt/gsd/commands/*.md $HOME/.claude/commands/gsd/ \
+    && cp /opt/gsd/agents/*.md $HOME/.claude/agents/
+
+# Install peer-review command
+COPY commands/ /opt/commands/
+RUN mkdir -p $HOME/.claude/commands \
+    && cp /opt/commands/*.md $HOME/.claude/commands/
+
+# Codex CLI (not in base template)
+RUN npm install -g @openai/codex
+
+# Setup script (replaces network-lock.sh for sandbox mode)
+COPY sandbox-setup.sh /opt/sandbox-setup.sh
+RUN chmod +x /opt/sandbox-setup.sh
+
+RUN mkdir -p $HOME/.codex
+
+RUN git config --global user.name "walter" \
+    && git config --global user.email "walter@local" \
+    && git config --global init.defaultBranch main
+
+# Symlink memory_tool so ~/memory_tool → /opt/memory_tool
+RUN ln -s /opt/memory_tool $HOME/memory_tool
+
+# Give agent user ownership of its home directory
+RUN chown -R agent:agent $HOME
+
+USER agent
