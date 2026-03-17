@@ -88,6 +88,43 @@ Before marking any step complete:
 4. check for obvious regressions
 5. run tests if available and appropriate
 
+## Testing Enforcement (Non-Negotiable)
+
+After completing code changes in ANY task, you MUST:
+
+1. **STOP** — do not proceed to the next task
+2. **Write tests** for ALL new and modified functionality:
+   - Success/happy-path cases
+   - Error and edge cases
+3. **Run tests** — all must pass
+4. **Fix failures** before proceeding
+
+**Never mark a task `[x]` without tests written and passing.**
+
+If the plan's CONTEXT.md specifies TDD, write tests BEFORE the implementation code within each task.
+
+### Partial Implementation Exception
+
+If tests cannot pass until a later dependent task completes:
+1. Still write the tests
+2. Add a `TODO(task-N)` comment in the test noting which task will unblock it
+3. Mark the current task as `[x]` with a note: "tests written, blocked on Task N"
+4. When the dependent task completes, remove the TODO comment and verify all previously blocked tests pass
+
+### SQL Validation (Replaces Unit Tests for SQL Tasks)
+
+When a task involves writing SQL (queries, views, stored procedures, pipeline logic, transformations), unit tests do NOT apply. Instead:
+
+1. **Write validation queries** that verify correctness:
+   - Row count checks
+   - Sample data spot-checks
+   - Boundary/edge case queries (nulls, duplicates, date ranges)
+   - Comparison against known-good source or previous results where applicable
+2. **Run validation queries** — results must match expectations
+3. **Save validation queries** to `.planning/phases/phase-{N}-task-{M}-validation.sql` for audit trail
+
+**Never mark a SQL task `[x]` without validation queries run and results verified.**
+
 ## Completion Protocol
 
 After all steps are complete:

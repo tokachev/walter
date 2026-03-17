@@ -1,11 +1,26 @@
 ---
 description: "Capture decisions and context for a phase before planning"
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
 # GSD: Discuss Phase
 
 You are facilitating a discussion to capture decisions for a GSD phase.
+
+## Step 0: Explore Codebase
+
+Before asking the user anything, launch an Explore subagent via Task() to analyze the codebase relevant to this phase.
+
+The agent should investigate:
+- Existing patterns and conventions in code areas this phase will touch
+- Files that will likely be affected (list with paths)
+- Dependencies and interconnections between affected components
+- Test coverage for the affected areas (existing tests, test patterns used)
+- If this phase is SQL-heavy (queries, views, stored procedures, pipeline logic, transformations), note that **validation queries replace unit tests** — flag this for planning
+
+Write the full findings to `.planning/phases/phase-{N}-EXPLORE.md`.
+
+After the agent completes, present a **3-5 bullet summary** of the key findings to the user before proceeding to questions.
 
 ## Step 1: Load Context
 
@@ -14,15 +29,54 @@ You are facilitating a discussion to capture decisions for a GSD phase.
 3. Read `.planning/REQUIREMENTS.md` for full requirements
 4. Read `.planning/PROJECT.md` for project context
 
-## Step 2: Facilitate Discussion
+## Step 2: Facilitate Discussion (One Question at a Time)
 
-Present the phase scope to the user and discuss:
-- **Approach**: How should we implement this? What patterns to use?
-- **Decisions**: Any technical choices to make (libraries, architecture, etc.)
-- **Risks**: What could go wrong? Edge cases?
-- **Dependencies**: External services, APIs, data sources?
+**CRITICAL**: Ask ONE question at a time using AskFollowupQuestion. Wait for the user's response before asking the next question. Do NOT batch multiple questions into a single message.
 
-If $ARGUMENTS contains specific topics, focus on those.
+### Question 1: Scope
+Present the phase scope from the roadmap and ask:
+> "Here's what this phase covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
+
+Wait for response.
+
+### Step 1.5: Propose Implementation Approaches
+After the scope is confirmed, propose **2-3 implementation approaches** with trade-offs. Lead with the recommended option. Format:
+
+> **Option A (Recommended):** {approach} — {pros}. Trade-off: {cons}.
+> **Option B:** {approach} — {pros}. Trade-off: {cons}.
+> **Option C:** {approach} — {pros}. Trade-off: {cons}.
+
+Ask the user to pick via AskFollowupQuestion:
+> "Which approach do you prefer?"
+
+**Skip this step** if the approach is obvious (only one reasonable way) or the user already specified it.
+
+Wait for response.
+
+### Question 2: Key Decisions
+Based on the chosen approach, ask about the most important technical decision:
+> "{specific technical choice that needs to be made}?"
+
+Wait for response.
+
+### Question 3: Risks & Edge Cases
+> "Any risks or edge cases you're aware of that we should account for?"
+
+Wait for response.
+
+### Question 4: Dependencies
+> "Are there external dependencies (services, APIs, data sources) we need to coordinate with?"
+
+Wait for response.
+
+### Question 5: Testing Preference
+> "How should we approach testing for this phase?"
+> - **TDD (tests first)**: Write tests before implementation, use them to drive design
+> - **Regular (code first, then tests)**: Implement first, add tests after each task
+
+Wait for response. Store the preference in the context file.
+
+If $ARGUMENTS contains specific topics, focus on those and skip irrelevant questions.
 
 ## Step 3: Write Context File
 
@@ -31,12 +85,20 @@ Capture all decisions in `.planning/phases/phase-{N}-CONTEXT.md`:
 ```markdown
 # Phase {N} Context: {phase name}
 
+## Exploration Summary
+{Key findings from Step 0 — link to full explore doc}
+See: `.planning/phases/phase-{N}-EXPLORE.md`
+
 ## Approach
-{How we're implementing this}
+{Chosen implementation approach and rationale}
 
 ## Key Decisions
 - {decision 1}: {rationale}
 - {decision 2}: {rationale}
+
+## Testing Preference
+{TDD or Regular — as chosen by user}
+{If SQL-heavy phase: "Validation queries replace unit tests for SQL tasks"}
 
 ## Constraints
 - {constraint from discussion}
