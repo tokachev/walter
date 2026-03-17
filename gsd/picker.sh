@@ -36,15 +36,25 @@ fi
 # Append "Other" as last option
 OPTIONS+=("Other (свой ответ)")
 
-# Non-interactive mode: no tty — return first option (skip "Other")
+# Non-interactive mode: no tty (e.g. Claude Code Bash tool)
+# Instead of silently returning first option, print question + all options
+# so the calling agent can present them to the user via AskUserQuestion.
 if [[ ! -t 0 && ! -t 1 ]] || [[ ! -t 2 ]]; then
-    # Check if we're being piped to AND have no terminal
     if [[ ! -t 1 ]]; then
+        echo "PICKER_QUESTION: $HEADER"
         if $MULTI; then
-            printf '%s\n' "${OPTIONS[@]:0:${#OPTIONS[@]}-1}"
+            echo "PICKER_MODE: multi"
         else
-            echo "${OPTIONS[0]}"
+            echo "PICKER_MODE: single"
         fi
+        echo "PICKER_OPTIONS:"
+        local_i=1
+        for opt in "${OPTIONS[@]}"; do
+            echo "  ${local_i}) $opt"
+            ((local_i++))
+        done
+        echo "---"
+        echo "Non-interactive: present these options to the user via AskUserQuestion."
         exit 0
     fi
 fi
@@ -91,6 +101,7 @@ pick_with_numbered_list() {
 
     if $MULTI; then
         read -r -p "Enter numbers separated by spaces (e.g. 1 3): " choices </dev/tty
+        # shellcheck disable=SC2086 — intentional word splitting on user input
         for num in $choices; do
             local idx=$((num - 1))
             if [[ $idx -ge 0 && $idx -lt ${#OPTIONS[@]} ]]; then

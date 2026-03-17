@@ -88,20 +88,26 @@ Before marking any step complete:
 4. check for obvious regressions
 5. run tests if available and appropriate
 
-## Testing Enforcement (Non-Negotiable)
+## Testing Enforcement
 
-After completing code changes in ANY task, you MUST:
+After completing code changes in ANY task, check whether the project has a test framework:
 
+1. Look for test runners, test directories, or test configuration (e.g. `pytest.ini`, `jest.config`, `package.json` test scripts, `Makefile` test targets, a `tests/` directory)
+2. Check the plan's CONTEXT.md for a testing preference (TDD, regular, validation-only, or none)
+
+**If a test framework exists:**
 1. **STOP** — do not proceed to the next task
-2. **Write tests** for ALL new and modified functionality:
-   - Success/happy-path cases
-   - Error and edge cases
+2. **Write tests** for new and modified functionality (happy-path + edge cases)
 3. **Run tests** — all must pass
 4. **Fix failures** before proceeding
+5. If CONTEXT.md specifies TDD, write tests BEFORE the implementation code
 
-**Never mark a task `[x]` without tests written and passing.**
+**If NO test framework exists** (e.g. shell-only projects, infra scripts):
+1. Run available validation instead: `bash -n` for shell scripts, linters, type checks, or manual smoke commands documented in the project
+2. Do NOT invent a test framework or block on missing tests
+3. Mark the task `[x]` once validation passes
 
-If the plan's CONTEXT.md specifies TDD, write tests BEFORE the implementation code within each task.
+**Never mark a task `[x]` without running the appropriate validation for the project.**
 
 ### Partial Implementation Exception
 

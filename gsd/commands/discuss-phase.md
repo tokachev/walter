@@ -9,7 +9,7 @@ You are facilitating a discussion to capture decisions for a GSD phase.
 
 ## Step 0: Explore Codebase
 
-Before asking the user anything, launch an Explore subagent via Task() to analyze the codebase relevant to this phase.
+Before asking the user anything, launch an Explore subagent via Agent(subagent_type="Explore") to analyze the codebase relevant to this phase.
 
 The agent should investigate:
 - Existing patterns and conventions in code areas this phase will touch
@@ -29,74 +29,34 @@ After the agent completes, present a **3-5 bullet summary** of the key findings 
 3. Read `.planning/REQUIREMENTS.md` for full requirements
 4. Read `.planning/PROJECT.md` for project context
 
-## Step 2: Facilitate Discussion (One Question at a Time)
+## Step 2: Facilitate Discussion
 
-**CRITICAL**: Ask ONE question at a time using AskFollowupQuestion. Wait for the user's response before asking the next question. Do NOT batch multiple questions into a single message.
+Use **AskUserQuestion** for all choices (picker.sh does not work in Claude Code's non-interactive Bash tool). For questions with concrete options, provide them as AskUserQuestion options. For free-form questions, use AskUserQuestion with open-ended framing.
 
-### Interactive Picker
+**Batching rule**: present the scope overview + approach options together in a single message (Questions 1 + 1.5). Then batch remaining questions (2-5) in a second round if they are straightforward. Only split into individual questions when a later question depends on an earlier answer.
 
-When a question has a **finite set of concrete choices** (approach, technology, pattern, framework), use the fzf picker instead of a text question:
+If `$ARGUMENTS` already contains answers — skip the corresponding questions.
 
-```bash
-echo -e "Option A: description\nOption B: description\nOption C: description" | bash gsd/picker.sh "Question text?"
-```
+### Round 1: Scope + Approach
 
-For multi-select questions, add `--multi`:
-```bash
-echo -e "Choice 1\nChoice 2\nChoice 3" | bash gsd/picker.sh --multi "Which ones apply?"
-```
+Present the phase scope from the roadmap and ask via AskUserQuestion:
+1. **Scope confirmation**: "Here's what this phase covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
+2. **Approach** (if non-obvious): Propose 2-3 implementation approaches with trade-offs. Lead with the recommended option. Present as AskUserQuestion options.
 
-**Rules:**
-- If `$ARGUMENTS` already contains the answer — skip the picker, use the provided value
-- Free-form questions (risk assessment, descriptions, open-ended) stay as text via AskFollowupQuestion
-- The picker auto-appends "Other (свой ответ)" for custom input
-- Works without fzf (graceful fallback to numbered list)
-
-### Question 1: Scope
-Present the phase scope from the roadmap and ask:
-> "Here's what this phase covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
+**Skip approach question** if there's only one reasonable way or the user already specified it.
 
 Wait for response.
 
-### Step 1.5: Propose Implementation Approaches
-After the scope is confirmed, propose **2-3 implementation approaches** with trade-offs. Lead with the recommended option. **Use the picker** for this choice:
+### Round 2: Decisions, Risks, Testing
 
-```bash
-echo -e "Option A (Recommended): {approach} — {pros}. Trade-off: {cons}\nOption B: {approach} — {pros}. Trade-off: {cons}\nOption C: {approach} — {pros}. Trade-off: {cons}" | bash gsd/picker.sh "Which approach do you prefer?"
-```
+Based on the chosen approach, ask the remaining questions. Batch independent questions together via AskUserQuestion (up to 4 questions):
 
-**Skip this step** if the approach is obvious (only one reasonable way) or the user already specified it.
+1. **Key Decisions**: If choosing between specific alternatives (library X vs Y, pattern A vs B), present as options. If open-ended, use free-form.
+2. **Risks & Edge Cases**: "Any risks or edge cases you're aware of that we should account for?"
+3. **Dependencies**: "Are there external dependencies (services, APIs, data sources) we need to coordinate with?"
+4. **Testing Preference**: Options: "TDD (tests first)", "Regular (code first, then tests)", "Validation queries only (SQL-heavy)", "No test framework — validation only (linters, bash -n, smoke tests)"
 
-Wait for response.
-
-### Question 2: Key Decisions
-Based on the chosen approach, if the decision is a choice between specific alternatives (e.g. library X vs Y, pattern A vs B), **use the picker**:
-```bash
-echo -e "Alternative 1\nAlternative 2\nAlternative 3" | bash gsd/picker.sh "{specific technical choice}?"
-```
-If the decision is open-ended, use AskFollowupQuestion as before.
-
-Wait for response.
-
-### Question 3: Risks & Edge Cases
-> "Any risks or edge cases you're aware of that we should account for?"
-
-Wait for response. *(Free-form — no picker)*
-
-### Question 4: Dependencies
-> "Are there external dependencies (services, APIs, data sources) we need to coordinate with?"
-
-Wait for response. *(Free-form — no picker)*
-
-### Question 5: Testing Preference
-**Use the picker** for this choice:
-```bash
-echo -e "TDD (tests first): Write tests before implementation, drive design with tests\nRegular (code first, then tests): Implement first, add tests after each task\nValidation queries only: SQL-heavy phase, use validation queries instead of unit tests" | bash gsd/picker.sh "How should we approach testing for this phase?"
-```
-
-Wait for response. Store the preference in the context file.
-
-If $ARGUMENTS contains specific topics, focus on those and skip irrelevant questions.
+Wait for response. Store the testing preference in the context file.
 
 ## Step 3: Write Context File
 
