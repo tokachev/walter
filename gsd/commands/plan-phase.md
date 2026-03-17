@@ -95,17 +95,12 @@ After the coordinator finishes, read the final plan to verify it was written cor
 
 ## Step 3.5: Resolve Divergences (if any)
 
-If the plan coordinator reports significant divergences between Claude and Codex drafts (different framework choices, architectural patterns, or conflicting approaches), **use the picker** to let the user decide instead of auto-resolving:
-
-```bash
-echo -e "Claude approach: {description}\nCodex approach: {description}\nHybrid: {merged description}" | bash gsd/picker.sh "The planners disagree on {topic}. Which approach?"
-```
+If the plan coordinator reports significant divergences between Claude and Codex drafts (different framework choices, architectural patterns, or conflicting approaches), present the options to the user via AskFollowupQuestion and let them decide.
 
 **Rules:**
-- If `$ARGUMENTS` already specifies the approach — skip the picker
-- Only invoke picker for **material divergences** (different libraries, patterns, or architectures)
+- If `$ARGUMENTS` already specifies the approach — skip asking
+- Only ask for **material divergences** (different libraries, patterns, or architectures)
 - Minor wording/ordering differences — auto-resolve without asking
-- Free-form questions (e.g. "any additional context?") stay as text via AskFollowupQuestion
 
 ## Step 4: Validate Plans
 
