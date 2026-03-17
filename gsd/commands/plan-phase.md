@@ -93,6 +93,15 @@ The coordinator will:
 
 After the coordinator finishes, read the final plan to verify it was written correctly.
 
+## Step 3.5: Resolve Divergences (if any)
+
+If the plan coordinator reports significant divergences between Claude and Codex drafts (different framework choices, architectural patterns, or conflicting approaches), present the options to the user via AskFollowupQuestion and let them decide.
+
+**Rules:**
+- If `$ARGUMENTS` already specifies the approach — skip asking
+- Only ask for **material divergences** (different libraries, patterns, or architectures)
+- Minor wording/ordering differences — auto-resolve without asking
+
 ## Step 4: Validate Plans
 
 Spawn qa-validator as a plan checker:

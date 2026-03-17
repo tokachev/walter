@@ -10,10 +10,10 @@ You are initializing a new GSD (Get Stuff Done) project. Follow these steps:
 ## Step 1: Interactive Brief
 
 Ask the user these questions (skip any they've already answered in $ARGUMENTS):
-1. **What are we building?** (one paragraph)
-2. **What's the desired outcome?** (what does "done" look like)
+1. **What are we building?** (one paragraph) — *free-form text*
+2. **What's the desired outcome?** (what does "done" look like) — *free-form text*
 3. **Any constraints?** (tech stack, timeline, compatibility requirements)
-4. **Is there existing code to work with?** (if yes, we'll research it)
+4. **Is there existing code to work with?** (if yes, we'll research it) — *free-form text*
 
 ## Step 2: Dual Codebase Research (if existing code)
 
