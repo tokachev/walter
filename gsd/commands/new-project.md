@@ -10,10 +10,15 @@ You are initializing a new GSD (Get Stuff Done) project. Follow these steps:
 ## Step 1: Interactive Brief
 
 Ask the user these questions (skip any they've already answered in $ARGUMENTS):
-1. **What are we building?** (one paragraph)
-2. **What's the desired outcome?** (what does "done" look like)
-3. **Any constraints?** (tech stack, timeline, compatibility requirements)
-4. **Is there existing code to work with?** (if yes, we'll research it)
+1. **What are we building?** (one paragraph) — *free-form text*
+2. **What's the desired outcome?** (what does "done" look like) — *free-form text*
+3. **Any constraints?** — Use the **picker with --multi** for common constraint categories, then follow up on selected items:
+```bash
+echo -e "Python only\nTypeScript/Node.js\nGo\nRust\nMust work with existing DB schema\nBackwards-compatible API\nNo new dependencies\nDocker/containerized\nSpecific cloud provider (AWS/GCP/Azure)\nPerformance-critical (latency/throughput)\nTimeline constraint" | bash gsd/picker.sh --multi "Any constraints? (select all that apply)"
+```
+After selection, ask free-form follow-up for details on each selected constraint (e.g. "Which cloud provider?" if they picked cloud).
+If `$ARGUMENTS` already specifies constraints — skip the picker.
+4. **Is there existing code to work with?** (if yes, we'll research it) — *free-form text*
 
 ## Step 2: Dual Codebase Research (if existing code)
 
