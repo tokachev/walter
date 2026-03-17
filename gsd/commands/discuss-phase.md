@@ -33,6 +33,25 @@ After the agent completes, present a **3-5 bullet summary** of the key findings 
 
 **CRITICAL**: Ask ONE question at a time using AskFollowupQuestion. Wait for the user's response before asking the next question. Do NOT batch multiple questions into a single message.
 
+### Interactive Picker
+
+When a question has a **finite set of concrete choices** (approach, technology, pattern, framework), use the fzf picker instead of a text question:
+
+```bash
+echo -e "Option A: description\nOption B: description\nOption C: description" | bash gsd/picker.sh "Question text?"
+```
+
+For multi-select questions, add `--multi`:
+```bash
+echo -e "Choice 1\nChoice 2\nChoice 3" | bash gsd/picker.sh --multi "Which ones apply?"
+```
+
+**Rules:**
+- If `$ARGUMENTS` already contains the answer — skip the picker, use the provided value
+- Free-form questions (risk assessment, descriptions, open-ended) stay as text via AskFollowupQuestion
+- The picker auto-appends "Other (свой ответ)" for custom input
+- Works without fzf (graceful fallback to numbered list)
+
 ### Question 1: Scope
 Present the phase scope from the roadmap and ask:
 > "Here's what this phase covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
@@ -40,39 +59,40 @@ Present the phase scope from the roadmap and ask:
 Wait for response.
 
 ### Step 1.5: Propose Implementation Approaches
-After the scope is confirmed, propose **2-3 implementation approaches** with trade-offs. Lead with the recommended option. Format:
+After the scope is confirmed, propose **2-3 implementation approaches** with trade-offs. Lead with the recommended option. **Use the picker** for this choice:
 
-> **Option A (Recommended):** {approach} — {pros}. Trade-off: {cons}.
-> **Option B:** {approach} — {pros}. Trade-off: {cons}.
-> **Option C:** {approach} — {pros}. Trade-off: {cons}.
-
-Ask the user to pick via AskFollowupQuestion:
-> "Which approach do you prefer?"
+```bash
+echo -e "Option A (Recommended): {approach} — {pros}. Trade-off: {cons}\nOption B: {approach} — {pros}. Trade-off: {cons}\nOption C: {approach} — {pros}. Trade-off: {cons}" | bash gsd/picker.sh "Which approach do you prefer?"
+```
 
 **Skip this step** if the approach is obvious (only one reasonable way) or the user already specified it.
 
 Wait for response.
 
 ### Question 2: Key Decisions
-Based on the chosen approach, ask about the most important technical decision:
-> "{specific technical choice that needs to be made}?"
+Based on the chosen approach, if the decision is a choice between specific alternatives (e.g. library X vs Y, pattern A vs B), **use the picker**:
+```bash
+echo -e "Alternative 1\nAlternative 2\nAlternative 3" | bash gsd/picker.sh "{specific technical choice}?"
+```
+If the decision is open-ended, use AskFollowupQuestion as before.
 
 Wait for response.
 
 ### Question 3: Risks & Edge Cases
 > "Any risks or edge cases you're aware of that we should account for?"
 
-Wait for response.
+Wait for response. *(Free-form — no picker)*
 
 ### Question 4: Dependencies
 > "Are there external dependencies (services, APIs, data sources) we need to coordinate with?"
 
-Wait for response.
+Wait for response. *(Free-form — no picker)*
 
 ### Question 5: Testing Preference
-> "How should we approach testing for this phase?"
-> - **TDD (tests first)**: Write tests before implementation, use them to drive design
-> - **Regular (code first, then tests)**: Implement first, add tests after each task
+**Use the picker** for this choice:
+```bash
+echo -e "TDD (tests first): Write tests before implementation, drive design with tests\nRegular (code first, then tests): Implement first, add tests after each task\nValidation queries only: SQL-heavy phase, use validation queries instead of unit tests" | bash gsd/picker.sh "How should we approach testing for this phase?"
+```
 
 Wait for response. Store the preference in the context file.
 
