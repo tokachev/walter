@@ -1,5 +1,19 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "bash /opt/hooks/statusline-command.sh"
+  },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/inject-temporal-context.sh"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": ".*",
@@ -38,18 +52,6 @@
             "type": "command",
             "command": "/opt/hooks/credential-guard.sh bash",
             "statusMessage": "Scanning for credentials..."
-          }
-        ]
-      }
-    ],
-    "PermissionRequest": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "plannotator",
-            "timeout": 345600
           }
         ]
       }

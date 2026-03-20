@@ -251,7 +251,7 @@ ENV_VARS=(
   # attempts connections that hang until TCP timeout, adding minutes of latency.
   -e "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
   # Default to Opus
-  -e "ANTHROPIC_MODEL=claude-opus-4-6"
+  -e "ANTHROPIC_MODEL=claude-opus-4-6[1m]"
 )
 
 [ "$HOST_CLAUDE_AGENTS_MOUNTED" = true ] && ENV_VARS+=(-e "WALTER_HOST_AGENTS_MOUNTED=1")
@@ -527,6 +527,7 @@ PLANNOTATOR_PORT=$(allocate_plannotator_port "$PLANNOTATOR_PORT_BASE") || true
 if [ -n "${PLANNOTATOR_PORT:-}" ]; then
   ENV_VARS+=(-e "PLANNOTATOR_PORT=$PLANNOTATOR_PORT")
   ENV_VARS+=(-e "PLANNOTATOR_REMOTE=1")
+  ENV_VARS+=(-e "PLANNOTATOR_SHARE=disabled")
   DOCKER_PORT_FLAGS=(-p "${PLANNOTATOR_PORT}:${PLANNOTATOR_PORT}")
 else
   echo "WARNING: Could not allocate plannotator port (range ${PLANNOTATOR_PORT_BASE}-$((PLANNOTATOR_PORT_BASE+100)) exhausted)" >&2

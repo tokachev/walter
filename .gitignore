@@ -12,3 +12,4 @@ __pycache__/
 .claude/completed/
 .claude/agent-memory/
 .claude/projects/
+.planning/

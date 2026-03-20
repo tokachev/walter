@@ -144,6 +144,14 @@ for ip in $INITIAL_IPS; do
   iptables -A OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT
 done
 
+# Allow incoming connections to plannotator and dashboard ports
+if [ -n "${PLANNOTATOR_PORT:-}" ]; then
+  iptables -A INPUT -p tcp --dport "$PLANNOTATOR_PORT" -j ACCEPT
+fi
+if [ -n "${WALTER_DASHBOARD_PORT:-}" ]; then
+  iptables -A INPUT -p tcp --dport "$WALTER_DASHBOARD_PORT" -j ACCEPT
+fi
+
 # REJECT everything else (REJECT returns immediate error; DROP hangs until TCP timeout)
 # Critical: Claude Code connects to telemetry (segment.io, growthbook.io, datadoghq.com)
 # With DROP, each blocked connection hangs 60-120s. With REJECT, it fails in 0.02s.
@@ -225,8 +233,12 @@ CONTAINER_SETTINGS="$HOME/.claude/settings.json"
 
 if [ -f "$HOST_SETTINGS" ] && [ -f "$CONTAINER_SETTINGS" ]; then
   echo "⚙️  Merging host settings with container hooks..."
-  MERGED=$(jq -s '.[0] * .[1] | .hooks = (.[0].hooks // {}) * (.[1].hooks // {})' \
-    "$HOST_SETTINGS" "$CONTAINER_SETTINGS" 2>/dev/null) || true
+  MERGED=$(jq -s '
+    .[0] * .[1]
+    | .hooks = (.[0].hooks // {}) * (.[1].hooks // {})
+    | .statusLine = (.[1].statusLine // .[0].statusLine // null)
+    | if .statusLine == null then del(.statusLine) else . end
+  ' "$HOST_SETTINGS" "$CONTAINER_SETTINGS" 2>/dev/null) || true
   if [ -n "$MERGED" ]; then
     echo "$MERGED" > "$CONTAINER_SETTINGS"
     echo "  ✓ Settings merged (host preferences + container hooks)"

@@ -38,7 +38,8 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 
 # Native hooks: credential-guard scanner + hook script
 COPY hooks/ /opt/hooks/
-RUN chmod +x /opt/hooks/credential-guard.sh /opt/hooks/scan-credentials.sh
+RUN chmod +x /opt/hooks/credential-guard.sh /opt/hooks/scan-credentials.sh /opt/hooks/review-plan.sh /opt/hooks/statusline-command.sh \
+    && ln -s /opt/hooks/review-plan.sh /usr/local/bin/review-plan
 
 # Guardrails: audit log, circuit breaker, cost tracker, SQL guard
 COPY guardrails/ /opt/guardrails/
