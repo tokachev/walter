@@ -53,7 +53,18 @@ Merge both into `.claude/research/gsd-codebase-overview.md` before writing `.pla
 
 If Codex is unavailable, continue with Claude-only research but say so explicitly.
 
-Create `.planning/` structure: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`.
+Create `.planning/` structure: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`, `REQUIREMENTS-CHANGELOG.md`.
+
+The `REQUIREMENTS-CHANGELOG.md` tracks delta specs (ADDED/MODIFIED/REMOVED requirements) across phases:
+```markdown
+# Requirements Changelog
+
+Tracks all requirement changes across phases using delta specs (ADDED/MODIFIED/REMOVED).
+Delta specs are merged into REQUIREMENTS.md via `/gsd:sync-specs`.
+
+## Phase Deltas
+(populated during execution)
+```
 
 Present the roadmap with all phases to the user for confirmation before proceeding.
 
@@ -172,9 +183,28 @@ After ALL phases are planned:
 
 {... repeat for all phases}
 
-## Final Validation
-- [ ] All phase validation commands pass
-- [ ] Requirements checklist verified
+## Post-Phase Instructions (apply after each phase)
+
+### Delta Specs
+After executing each phase, check if requirements changed during implementation:
+- ADDED: new requirements discovered
+- MODIFIED: requirements adjusted based on reality
+- REMOVED: requirements found infeasible
+Append changes to `.planning/REQUIREMENTS-CHANGELOG.md`. Skip if no changes.
+
+### 3D Verification
+Verify each phase across three dimensions:
+1. **Completeness**: All requirements implemented? All tasks [x]?
+2. **Correctness**: Implementation matches spec intent? Edge cases handled?
+3. **Coherence**: Design decisions consistent? No scope creep?
+
+Classify issues as CRITICAL (blocks delivery) / WARNING (should fix) / SUGGESTION (nice to have).
+
+## Final Validation (3D)
+- [ ] **Completeness**: All requirements from REQUIREMENTS.md implemented and verified
+- [ ] **Correctness**: All phase validation commands pass, edge cases handled
+- [ ] **Coherence**: All changes consistent with design decisions, no scope creep
+- [ ] Delta specs synced to REQUIREMENTS.md
 - [ ] No regressions introduced
 ```
 
@@ -196,6 +226,12 @@ To execute in a new Walter session:
 
 Or to execute specific phases:
   WALTER_WAVE="1,2,3" WALTER_PLAN_FILE=.planning/autopilot-PLAN.md bash plan-executor.sh
+```
+
+After execution completes successfully, run:
+```
+/gsd:sync-specs      # Merge requirement changes into REQUIREMENTS.md
+/gsd:archive project # Archive all phases with full audit trail
 ```
 
 User input: $ARGUMENTS

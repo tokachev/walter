@@ -97,6 +97,17 @@ Create these files:
 {description}
 ```
 
+### `.planning/REQUIREMENTS-CHANGELOG.md`
+```markdown
+# Requirements Changelog
+
+Tracks all requirement changes across phases using delta specs (ADDED/MODIFIED/REMOVED).
+Delta specs are merged into REQUIREMENTS.md via `/gsd:sync-specs`.
+
+## Phase Deltas
+(populated during execution)
+```
+
 ### `.planning/STATE.md`
 ```markdown
 # GSD State

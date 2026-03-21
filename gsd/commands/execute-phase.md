@@ -80,6 +80,31 @@ Write `.planning/phases/phase-{N}-RESULTS.md`:
 {Pass/fail summary from qa-validator}
 ```
 
+## Step 5.5: Record Delta Specs
+
+After documenting results, check if any requirements changed during this phase:
+- New requirements discovered during implementation
+- Requirements modified based on implementation reality
+- Requirements removed as infeasible or out of scope
+
+If changes exist, append to `.planning/REQUIREMENTS-CHANGELOG.md`:
+
+```markdown
+## Phase {N}: {Phase Name} ({ISO date})
+
+### ADDED
+- {new requirement} — Reason: {why added}
+
+### MODIFIED
+- {original requirement} → {updated requirement} — Reason: {what changed}
+
+### REMOVED
+- {removed requirement} — Reason: {why removed}
+```
+
+If `.planning/REQUIREMENTS-CHANGELOG.md` doesn't exist, create it with a header first.
+If no requirement changes occurred, skip this step.
+
 ## Step 6: Capture Lessons
 
 If any of the following occurred during this phase, capture lessons:
