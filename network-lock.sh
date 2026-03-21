@@ -412,8 +412,8 @@ fi
 AGENTS_DIR="$HOME/.claude/agents"
 COMMANDS_DIR="$HOME/.claude/commands"
 BUILTIN_AGENTS_DIR="/opt/detective"
-BUILTIN_COMMANDS_DIR="/opt/gsd/commands"
-BUILTIN_GSD_AGENTS="/opt/gsd/agents"
+BUILTIN_COMMANDS_DIR="/opt/sdd/commands"
+BUILTIN_SDD_AGENTS="/opt/sdd/agents"
 BUILTIN_ROOT_COMMANDS="/opt/commands"
 NEEDS_MERGE=false
 
@@ -436,9 +436,9 @@ if [ "$NEEDS_MERGE" != true ] && [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_AGENTS_D
   done
 fi
 
-# Check if built-in GSD agents need merging
-if [ "$NEEDS_MERGE" != true ] && [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_GSD_AGENTS" ]; then
-  for f in "$BUILTIN_GSD_AGENTS"/*.md; do
+# Check if built-in SDD agents need merging
+if [ "$NEEDS_MERGE" != true ] && [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_SDD_AGENTS" ]; then
+  for f in "$BUILTIN_SDD_AGENTS"/*.md; do
     [ -f "$f" ] || continue
     fname=$(basename "$f")
     if [ ! -f "$AGENTS_DIR/$fname" ]; then
@@ -448,12 +448,12 @@ if [ "$NEEDS_MERGE" != true ] && [ -d "$AGENTS_DIR" ] && [ -d "$BUILTIN_GSD_AGEN
   done
 fi
 
-# Check if built-in GSD commands need merging
+# Check if built-in SDD commands need merging
 if [ "$NEEDS_MERGE" != true ] && [ -d "$COMMANDS_DIR" ] && [ -d "$BUILTIN_COMMANDS_DIR" ]; then
   for f in "$BUILTIN_COMMANDS_DIR"/*.md; do
     [ -f "$f" ] || continue
     fname=$(basename "$f")
-    if [ ! -f "$COMMANDS_DIR/gsd/$fname" ]; then
+    if [ ! -f "$COMMANDS_DIR/sdd/$fname" ]; then
       NEEDS_MERGE=true
       break
     fi
@@ -499,14 +499,14 @@ if [ "$NEEDS_MERGE" = true ]; then
   for f in "$BUILTIN_AGENTS_DIR"/*.md; do
     [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/agents/"
   done
-  for f in "$BUILTIN_GSD_AGENTS"/*.md; do
+  for f in "$BUILTIN_SDD_AGENTS"/*.md; do
     [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/agents/"
   done
 
   # Merge built-in commands
-  mkdir -p "$RUNTIME_HOME/.claude/commands/gsd"
+  mkdir -p "$RUNTIME_HOME/.claude/commands/sdd"
   for f in "$BUILTIN_COMMANDS_DIR"/*.md; do
-    [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/commands/gsd/"
+    [ -f "$f" ] && cp "$f" "$RUNTIME_HOME/.claude/commands/sdd/"
   done
   # Merge root commands (peer-review etc.)
   for f in "$BUILTIN_ROOT_COMMANDS"/*.md; do

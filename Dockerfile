@@ -65,9 +65,9 @@ COPY dashboard/ /opt/dashboard/
 COPY review/ /opt/review/
 RUN chmod +x /opt/review/review-executor.sh
 
-# GSD: commands and agents for spec-driven workflow
-COPY gsd/commands/ /opt/gsd/commands/
-COPY gsd/agents/ /opt/gsd/agents/
+# SDD: commands and agents for spec-driven development workflow
+COPY sdd/commands/ /opt/sdd/commands/
+COPY sdd/agents/ /opt/sdd/agents/
 
 # Install hooks configuration into Claude Code's global settings
 RUN mkdir -p $HOME/.claude \
@@ -77,10 +77,10 @@ RUN mkdir -p $HOME/.claude \
 RUN mkdir -p $HOME/.claude/agents \
     && cp /opt/detective/data-detective.md $HOME/.claude/agents/data-detective.md
 
-# Install GSD commands and agents into Claude Code's config
-RUN mkdir -p $HOME/.claude/commands/gsd \
-    && cp /opt/gsd/commands/*.md $HOME/.claude/commands/gsd/ \
-    && cp /opt/gsd/agents/*.md $HOME/.claude/agents/
+# Install SDD commands and agents into Claude Code's config
+RUN mkdir -p $HOME/.claude/commands/sdd \
+    && cp /opt/sdd/commands/*.md $HOME/.claude/commands/sdd/ \
+    && cp /opt/sdd/agents/*.md $HOME/.claude/agents/
 
 # Install peer-review command
 COPY commands/ /opt/commands/

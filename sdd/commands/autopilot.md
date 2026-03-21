@@ -3,9 +3,9 @@ description: "Interactive planning across all phases, then export a single self-
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Autopilot
+# SDD: Autopilot
 
-Full interactive GSD planning (with discussions and clarifications), but instead of executing phase-by-phase, all phases are planned upfront and exported into one self-contained plan file for autonomous execution in a fresh Walter session.
+Full interactive SDD planning (with discussions and clarifications), but instead of executing phase-by-phase, all phases are planned upfront and exported into one self-contained plan file for autonomous execution in a fresh Walter session.
 
 ## Step 0: Load Lessons
 
@@ -30,14 +30,14 @@ Ask the user these questions (skip any answered in $ARGUMENTS):
 If working with existing code, spawn codebase-researcher:
 
 ```
-Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to the requested project. Write findings to .claude/research/gsd-codebase-overview-claude.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to the requested project. Write findings to .claude/research/sdd-codebase-overview-claude.md")
 ```
 
 Run Codex in parallel — execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode:
 
 ```bash
 mkdir -p .claude/research
-codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/gsd-codebase-overview-codex.md
+codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/sdd-codebase-overview-codex.md
 Analyze this codebase for the requested project setup. Document:
 
 1. Project structure and entry points
@@ -49,11 +49,22 @@ Output structured markdown with concrete file references.
 CODEX_EOF
 ```
 
-Merge both into `.claude/research/gsd-codebase-overview.md` before writing `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md`.
+Merge both into `.claude/research/sdd-codebase-overview.md` before writing `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md`.
 
 If Codex is unavailable, continue with Claude-only research but say so explicitly.
 
-Create `.planning/` structure: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`.
+Create `.planning/` structure: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`, `REQUIREMENTS-CHANGELOG.md`.
+
+The `REQUIREMENTS-CHANGELOG.md` tracks delta specs (ADDED/MODIFIED/REMOVED requirements) across phases:
+```markdown
+# Requirements Changelog
+
+Tracks all requirement changes across phases using delta specs (ADDED/MODIFIED/REMOVED).
+Delta specs are merged into REQUIREMENTS.md via `/sdd:sync-specs`.
+
+## Phase Deltas
+(populated during execution)
+```
 
 Present the roadmap with all phases to the user for confirmation before proceeding.
 
@@ -172,9 +183,28 @@ After ALL phases are planned:
 
 {... repeat for all phases}
 
-## Final Validation
-- [ ] All phase validation commands pass
-- [ ] Requirements checklist verified
+## Post-Phase Instructions (apply after each phase)
+
+### Delta Specs
+After executing each phase, check if requirements changed during implementation:
+- ADDED: new requirements discovered
+- MODIFIED: requirements adjusted based on reality
+- REMOVED: requirements found infeasible
+Append changes to `.planning/REQUIREMENTS-CHANGELOG.md`. Skip if no changes.
+
+### 3D Verification
+Verify each phase across three dimensions:
+1. **Completeness**: All requirements implemented? All tasks [x]?
+2. **Correctness**: Implementation matches spec intent? Edge cases handled?
+3. **Coherence**: Design decisions consistent? No scope creep?
+
+Classify issues as CRITICAL (blocks delivery) / WARNING (should fix) / SUGGESTION (nice to have).
+
+## Final Validation (3D)
+- [ ] **Completeness**: All requirements from REQUIREMENTS.md implemented and verified
+- [ ] **Correctness**: All phase validation commands pass, edge cases handled
+- [ ] **Coherence**: All changes consistent with design decisions, no scope creep
+- [ ] Delta specs synced to REQUIREMENTS.md
 - [ ] No regressions introduced
 ```
 
@@ -196,6 +226,12 @@ To execute in a new Walter session:
 
 Or to execute specific phases:
   WALTER_WAVE="1,2,3" WALTER_PLAN_FILE=.planning/autopilot-PLAN.md bash plan-executor.sh
+```
+
+After execution completes successfully, run:
+```
+/sdd:sync-specs      # Merge requirement changes into REQUIREMENTS.md
+/sdd:archive project # Archive all phases with full audit trail
 ```
 
 User input: $ARGUMENTS

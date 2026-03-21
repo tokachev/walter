@@ -50,9 +50,9 @@ For Python changes:
 - Review every modified file for scope relevance
 - Distinguish between necessary related cleanup and unrelated scope creep
 
-### Step 6: Produce the Review Report
+### Step 6: Produce the 3D Review Report
 
-Use this structure:
+Evaluate delivery across three dimensions (Completeness, Correctness, Coherence):
 
 ```text
 ## QA Validation Report
@@ -60,23 +60,42 @@ Use this structure:
 ### Task Summary
 [One-line description of what was requested]
 
-### Requirements Checklist
+### Dimension 1: Completeness
+Are all requirements implemented?
 For each requirement:
-OK / WARN / FAIL [Requirement] - [How it was addressed or what is missing]
+  OK / WARN / FAIL [Requirement] - [Status and details]
+- All tasks from plan finished?
+- All scenarios covered?
+- Missing features or gaps?
 
-### Code Quality Checks
-OK / WARN / FAIL [Check name] - [Details]
+### Dimension 2: Correctness
+Does the implementation match the spec intent?
+For each check:
+  OK / WARN / FAIL [Check] - [Details]
+- Code logic matches requirements?
+- Edge cases handled?
+- Data types, NULL handling, boundary conditions correct?
+- No regressions introduced?
 
-### Scope Verification
-OK all changes are related
-or
-WARN unrelated changes detected: [list]
+### Dimension 3: Coherence
+Are design decisions reflected consistently in code?
+For each check:
+  OK / WARN / FAIL [Check] - [Details]
+- Patterns consistent across changes?
+- Naming conventions followed?
+- Architecture decisions from plan respected?
+- No scope creep or unrelated changes?
+
+### Issue Severity
+- CRITICAL: Blocks delivery, must fix before acceptance
+- WARNING: Should fix, but not blocking
+- SUGGESTION: Nice to have improvement
 
 ### Risk Assessment
 [HIGH/MEDIUM/LOW] - [Summary of risk and reasoning]
 
 ### Recommendations
-- [Actionable items, ordered by priority]
+- [Actionable items, ordered by severity: CRITICAL first, then WARNING, then SUGGESTION]
 ```
 
 ## Principles

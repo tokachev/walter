@@ -3,7 +3,7 @@ description: "Capture a lesson learned from a correction, failure, or insight an
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 
-# GSD: Capture Lesson
+# SDD: Capture Lesson
 
 Record a lesson learned so future sessions can avoid the same mistake.
 
