@@ -3,7 +3,7 @@ description: "Fast path: create a compact dual-model plan and execute immediatel
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Quick
+# SDD: Quick
 
 Fast-path execution: compact dual-model research → compact synthesized plan → execute → report.
 

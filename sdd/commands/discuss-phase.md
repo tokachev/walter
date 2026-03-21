@@ -3,9 +3,9 @@ description: "Capture decisions and context for a phase before planning"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Discuss Phase
+# SDD: Discuss Phase
 
-You are facilitating a discussion to capture decisions for a GSD phase.
+You are facilitating a discussion to capture decisions for a SDD phase.
 
 ## Step 0: Explore Codebase
 
@@ -107,6 +107,6 @@ Update `.planning/STATE.md`:
 - Updated: {ISO timestamp}
 - Notes: Context captured for phase {N}
 
-Suggest next step: `/gsd:plan-phase` to create execution plans.
+Suggest next step: `/sdd:plan-phase` to create execution plans.
 
 User input: $ARGUMENTS

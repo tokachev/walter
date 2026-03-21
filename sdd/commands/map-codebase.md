@@ -3,7 +3,7 @@ description: "Deep codebase analysis: spawn parallel researchers for stack, arch
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Map Codebase
+# SDD: Map Codebase
 
 Comprehensive codebase analysis using dual-agent approach (Claude + Codex in parallel).
 

@@ -3,9 +3,9 @@ description: "Research codebase, create execution plans, and validate them for c
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Plan Phase
+# SDD: Plan Phase
 
-You are creating execution plans for the current GSD phase using parallel dual-model planning: Claude + Codex research in parallel, then Claude + Codex planning in parallel, then comparison + synthesis into one final plan.
+You are creating execution plans for the current SDD phase using parallel dual-model planning: Claude + Codex research in parallel, then Claude + Codex planning in parallel, then comparison + synthesis into one final plan.
 
 ## Step 1: Load Context
 
@@ -124,6 +124,6 @@ Update `.planning/STATE.md`:
 - Updated: {ISO timestamp}
 - Plans: {list of created plan files}
 
-Suggest next step: `/gsd:execute-phase` to run the plans.
+Suggest next step: `/sdd:execute-phase` to run the plans.
 
 User input: $ARGUMENTS
