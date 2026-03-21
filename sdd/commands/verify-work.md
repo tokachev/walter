@@ -3,7 +3,7 @@ description: "Present deliverables to user for UAT acceptance and handle issues"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Verify Work
+# SDD: Verify Work
 
 You are presenting the completed phase deliverables to the user for acceptance.
 
@@ -47,10 +47,10 @@ Ask the user:
 
 ## Step 4: Handle Issues
 
-If user reports issues, spawn gsd-debugger:
+If user reports issues, spawn sdd-debugger:
 
 ```
-Agent(subagent_type="gsd-debugger", prompt="User reported issues during UAT for Phase {N}: {user feedback}. Diagnose and create fix plan.")
+Agent(subagent_type="sdd-debugger", prompt="User reported issues during UAT for Phase {N}: {user feedback}. Diagnose and create fix plan.")
 ```
 
 Then execute the fix plan and re-present.
@@ -63,7 +63,7 @@ If accepted, update `.planning/STATE.md`:
 - Notes: Phase {N} accepted by user
 
 Suggest next step:
-- If more phases in ROADMAP.md: `/gsd:discuss-phase` for next phase
+- If more phases in ROADMAP.md: `/sdd:discuss-phase` for next phase
 - If last phase: "Project complete!"
 
 User input: $ARGUMENTS

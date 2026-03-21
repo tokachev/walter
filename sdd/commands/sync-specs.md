@@ -3,7 +3,7 @@ description: "Merge delta specs from changelog into main REQUIREMENTS.md"
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 
-# GSD: Sync Specs
+# SDD: Sync Specs
 
 Merge requirement changes (delta specs) accumulated during execution back into the main REQUIREMENTS.md.
 
@@ -49,6 +49,6 @@ After applying, mark each synced phase in REQUIREMENTS-CHANGELOG.md:
 
 - Show the updated REQUIREMENTS.md section counts (Must Have: N, Should Have: N, Out of Scope: N)
 - Note any changes that were skipped
-- Suggest: `/gsd:archive` to archive completed phases
+- Suggest: `/sdd:archive` to archive completed phases
 
 User input: $ARGUMENTS

@@ -1,11 +1,11 @@
 ---
-description: "Initialize a new GSD project with interactive brief, requirements, roadmap, and state tracking"
+description: "Initialize a new SDD project with interactive brief, requirements, roadmap, and state tracking"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: New Project
+# SDD: New Project
 
-You are initializing a new GSD (Get Stuff Done) project. Follow these steps:
+You are initializing a new SDD (Spec-Driven Development) project. Follow these steps:
 
 ## Step 1: Interactive Brief
 
@@ -21,7 +21,7 @@ If working with existing code, run Claude and Codex research in parallel. Start 
 
 ### Claude Research
 ```
-Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to: {brief summary}. Write findings to .claude/research/gsd-codebase-overview-claude.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to: {brief summary}. Write findings to .claude/research/sdd-codebase-overview-claude.md")
 ```
 
 ### Codex Research
@@ -30,7 +30,7 @@ Execute the following command using the Bash tool. First verify codex is availab
 
 ```bash
 mkdir -p .claude/research
-codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/gsd-codebase-overview-codex.md
+codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/sdd-codebase-overview-codex.md
 Analyze this codebase. Document:
 
 1. **Project structure** — directory layout, key files, entry points
@@ -44,7 +44,7 @@ CODEX_EOF
 
 ### Merge Research
 
-After both complete, read both files and produce merged overview at `.claude/research/gsd-codebase-overview.md`:
+After both complete, read both files and produce merged overview at `.claude/research/sdd-codebase-overview.md`:
 - Combine agreed-upon findings
 - Note unique insights from each
 - Flag contradictions (if any) for the user
@@ -102,7 +102,7 @@ Create these files:
 # Requirements Changelog
 
 Tracks all requirement changes across phases using delta specs (ADDED/MODIFIED/REMOVED).
-Delta specs are merged into REQUIREMENTS.md via `/gsd:sync-specs`.
+Delta specs are merged into REQUIREMENTS.md via `/sdd:sync-specs`.
 
 ## Phase Deltas
 (populated during execution)
@@ -110,7 +110,7 @@ Delta specs are merged into REQUIREMENTS.md via `/gsd:sync-specs`.
 
 ### `.planning/STATE.md`
 ```markdown
-# GSD State
+# SDD State
 
 - Project: {name}
 - Current Phase: 1
@@ -127,7 +127,7 @@ Present the created structure to the user. If dual research was run, call out:
 - Any contradictions that influenced the roadmap
 
 Then suggest next step:
-- `/gsd:discuss-phase` to discuss Phase 1 details
-- `/gsd:quick` if they want to skip straight to execution
+- `/sdd:discuss-phase` to discuss Phase 1 details
+- `/sdd:quick` if they want to skip straight to execution
 
 User input: $ARGUMENTS

@@ -3,7 +3,7 @@ description: "Archive completed phases or entire project with full audit trail"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# GSD: Archive
+# SDD: Archive
 
 Archive completed phases (or the entire project) to preserve a full audit trail and keep `.planning/phases/` clean.
 
@@ -29,7 +29,7 @@ If any phase fails validation, report which phases are not ready and why. Contin
 
 Read `.planning/REQUIREMENTS-CHANGELOG.md` (if it exists):
 - If there are unsynced phase deltas for the phases being archived, warn the user:
-  > "Phase {N} has unsynced requirement changes. Run `/gsd:sync-specs` first to merge them into REQUIREMENTS.md, or they'll be archived as-is."
+  > "Phase {N} has unsynced requirement changes. Run `/sdd:sync-specs` first to merge them into REQUIREMENTS.md, or they'll be archived as-is."
 - Wait for user confirmation before proceeding.
 
 ## Step 4: Create Archive
@@ -84,7 +84,7 @@ Present summary:
 - Total artifacts archived: {count}
 
 Suggest next steps:
-- If more phases remain: `/gsd:discuss-phase` for the next phase
-- If project archived: "Project fully archived. Start a new project with `/gsd:new-project`"
+- If more phases remain: `/sdd:discuss-phase` for the next phase
+- If project archived: "Project fully archived. Start a new project with `/sdd:new-project`"
 
 User input: $ARGUMENTS

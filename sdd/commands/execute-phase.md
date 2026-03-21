@@ -3,9 +3,9 @@ description: "Execute plans for current phase with wave-based parallelism and ve
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Execute Phase
+# SDD: Execute Phase
 
-You are executing the plans for the current GSD phase.
+You are executing the plans for the current SDD phase.
 
 ## Step 1: Load Context
 
@@ -44,10 +44,10 @@ Report pass/fail for each requirement.")
 
 ## Step 4: Handle Failures
 
-If qa-validator reports failures, spawn gsd-debugger:
+If qa-validator reports failures, spawn sdd-debugger:
 
 ```
-Agent(subagent_type="gsd-debugger", prompt="Diagnose verification failures for Phase {N}. QA report: {qa output}. Create a fix plan at .planning/phases/phase-{N}-FIX-PLAN.md")
+Agent(subagent_type="sdd-debugger", prompt="Diagnose verification failures for Phase {N}. QA report: {qa output}. Create a fix plan at .planning/phases/phase-{N}-FIX-PLAN.md")
 ```
 
 Then execute the fix plan:
@@ -108,7 +108,7 @@ If no requirement changes occurred, skip this step.
 ## Step 6: Capture Lessons
 
 If any of the following occurred during this phase, capture lessons:
-- Fix cycles were needed (gsd-debugger was invoked)
+- Fix cycles were needed (sdd-debugger was invoked)
 - Plan deviations were flagged by plan-executor
 - qa-validator found issues
 - Unexpected blockers were encountered
@@ -127,7 +127,7 @@ Update `.planning/STATE.md`:
 - State: VERIFYING (after execution), PHASE_COMPLETE (after verification passes), or FIX (if debugging)
 - Updated: {ISO timestamp}
 
-If verification passed, suggest: `/gsd:verify-work` for final UAT with user.
+If verification passed, suggest: `/sdd:verify-work` for final UAT with user.
 If issues remain, present the diagnostic summary.
 
 User input: $ARGUMENTS

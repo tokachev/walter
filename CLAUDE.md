@@ -98,22 +98,22 @@ Host-side real-time monitoring UI. Runs via `walter dashboard` (NOT inside the c
 - **Session structure** (`~/.walter/sessions/<id>/`): `session.json` (metadata), `audit.jsonl`, `progress.jsonl`, `cost.json`, `done` (written by `walter` on container exit).
 - **`plan-executor.sh`** writes structured progress events to `/var/log/walter/progress.jsonl` (plan_start, task_start, task_end, task_failed, plan_complete).
 
-### GSD workflow (`gsd/`)
+### SDD workflow (`sdd/`)
 
-Spec-driven development state machine: INIT → DISCUSSING → PLANNED → EXECUTING → VERIFYING → PHASE_COMPLETE → ARCHIVED. Commands in `gsd/commands/*.md`, agents in `gsd/agents/*.md`. State tracked in `.planning/`.
+Spec-Driven Development state machine: INIT → DISCUSSING → PLANNED → EXECUTING → VERIFYING → PHASE_COMPLETE → ARCHIVED. Commands in `sdd/commands/*.md`, agents in `sdd/agents/*.md`. State tracked in `.planning/`.
 
 Planning flow is dual-model by design:
 - research uses Claude + Codex in parallel and writes merged briefs under `.claude/research/`
-- plan synthesis goes through `gsd/agents/plan-coordinator.md`, which compares independent Claude + Codex drafts and writes the final plan
-- Walter runtime merges repo-owned GSD commands/agents over host `~/.claude` duplicates so container behavior stays aligned with the repo
-- repo-owned GSD agents now include `codebase-researcher`, `walter-planner`, `plan-executor`, `qa-validator`, `plan-coordinator`, `gsd-debugger`, and `elegance-reviewer`
-- Self-improvement loop: `tasks/lessons.md` stores persistent lessons and rules; `gsd/commands/capture-lesson.md` appends new lessons after corrections or failures; `autopilot.md` loads rules at session start; `execute-phase.md` captures lessons after each phase
+- plan synthesis goes through `sdd/agents/plan-coordinator.md`, which compares independent Claude + Codex drafts and writes the final plan
+- Walter runtime merges repo-owned SDD commands/agents over host `~/.claude` duplicates so container behavior stays aligned with the repo
+- repo-owned SDD agents now include `codebase-researcher`, `walter-planner`, `plan-executor`, `qa-validator`, `plan-coordinator`, `sdd-debugger`, and `elegance-reviewer`
+- Self-improvement loop: `tasks/lessons.md` stores persistent lessons and rules; `sdd/commands/capture-lesson.md` appends new lessons after corrections or failures; `autopilot.md` loads rules at session start; `execute-phase.md` captures lessons after each phase
 - Elegance pause: `plan-executor.md` includes an elegance check before non-trivial tasks; `elegance-reviewer` agent can be spawned for deeper review between plan and execute phases
 - Results documentation: `execute-phase.md` writes `.planning/phases/phase-{N}-RESULTS.md` after each phase with summary, changes, decisions, and validation status
-- Delta specs: requirement changes tracked as ADDED/MODIFIED/REMOVED in `.planning/REQUIREMENTS-CHANGELOG.md` during execution; merged into `REQUIREMENTS.md` via `/gsd:sync-specs`
+- Delta specs: requirement changes tracked as ADDED/MODIFIED/REMOVED in `.planning/REQUIREMENTS-CHANGELOG.md` during execution; merged into `REQUIREMENTS.md` via `/sdd:sync-specs`
 - 3D verification: qa-validator evaluates delivery across Completeness, Correctness, and Coherence dimensions with CRITICAL/WARNING/SUGGESTION severity; `verify-work.md` presents results in the same 3D structure
-- Archive workflow: `/gsd:archive` moves completed phase artifacts to `.planning/archive/phase-{N}-{date}/` with summary; prompts for delta spec sync first; supports phase-level and project-level archiving
-- Onboarding: `/gsd:onboard` provides interactive GSD tutorial using the real codebase (~15-30 min)
+- Archive workflow: `/sdd:archive` moves completed phase artifacts to `.planning/archive/phase-{N}-{date}/` with summary; prompts for delta spec sync first; supports phase-level and project-level archiving
+- Onboarding: `/sdd:onboard` provides interactive SDD tutorial using the real codebase (~15-30 min)
 - Autopilot integration: `autopilot.md` includes delta specs tracking, 3D final validation, and post-execution sync/archive instructions in exported plans
 
 ## Key conventions

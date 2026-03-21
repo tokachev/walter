@@ -1,24 +1,24 @@
 ---
-description: "Interactive GSD tutorial using your real codebase — learn by doing"
+description: "Interactive SDD tutorial using your real codebase — learn by doing"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
-# GSD: Onboard
+# SDD: Onboard
 
-Interactive walkthrough of the GSD (Get Stuff Done) workflow. Duration: ~15-30 minutes.
+Interactive walkthrough of the SDD (Spec-Driven Development) workflow. Duration: ~15-30 minutes.
 
 ## Step 1: Welcome & Context
 
 Check if `.planning/` exists:
-- **If yes**: Read STATE.md and show current project status. Offer: "You have an active project. Want to learn GSD alongside it, or start a fresh tutorial?"
+- **If yes**: Read STATE.md and show current project status. Offer: "You have an active project. Want to learn SDD alongside it, or start a fresh tutorial?"
 - **If no**: Continue with fresh tutorial.
 
-Present GSD philosophy:
-> GSD is a structured development workflow with a strict state machine, dual-model research (Claude + Codex in parallel), mandatory verification, and a lessons-learned system. It ensures high-confidence delivery through rigorous planning and execution.
+Present SDD philosophy:
+> SDD is a structured development workflow with a strict state machine, dual-model research (Claude + Codex in parallel), mandatory verification, and a lessons-learned system. It ensures high-confidence delivery through rigorous planning and execution.
 
 ## Step 2: State Machine Tour
 
-Present the GSD state machine:
+Present the SDD state machine:
 
 ```
 INIT → DISCUSSING → PLANNED → EXECUTING → VERIFYING → PHASE_COMPLETE → ARCHIVED
@@ -35,21 +35,21 @@ Explain each transition:
 
 ## Step 3: Two Workflows
 
-Explain the two main ways to use GSD:
+Explain the two main ways to use SDD:
 
 ### Phase-by-Phase (Interactive)
 Best for: exploratory work, unclear requirements, learning.
 ```
-/gsd:new-project → /gsd:discuss-phase → /gsd:plan-phase → /gsd:execute-phase → /gsd:verify-work
+/sdd:new-project → /sdd:discuss-phase → /sdd:plan-phase → /sdd:execute-phase → /sdd:verify-work
                                                                                       ↓
-                                                                              /gsd:archive
+                                                                              /sdd:archive
 ```
 Each phase is discussed, planned, executed, and verified individually.
 
 ### Autopilot (Full Planning Upfront)
 Best for: clear requirements, autonomous execution, ~70% of use cases.
 ```
-/gsd:autopilot → exports single autopilot-PLAN.md → execute in fresh session
+/sdd:autopilot → exports single autopilot-PLAN.md → execute in fresh session
 ```
 All phases planned interactively upfront, then exported as one self-contained plan for autonomous execution. Includes post-phase delta specs tracking and 3D verification.
 
@@ -64,8 +64,8 @@ Ask the user via AskFollowupQuestion:
 Agent(subagent_type="codebase-researcher", prompt="Find 2-3 small, low-risk improvements in this codebase: missing docs, small refactors, test gaps, or code quality fixes. Each should be completable in under 30 minutes. List candidates with file paths and descriptions.")
 ```
 2. Present candidates and let user pick one
-3. Walk through each GSD step, explaining what happens and why:
-   - **Discuss**: "Now we'd normally capture decisions via `/gsd:discuss-phase`..."
+3. Walk through each SDD step, explaining what happens and why:
+   - **Discuss**: "Now we'd normally capture decisions via `/sdd:discuss-phase`..."
    - **Plan**: "The plan-coordinator would launch Claude and Codex planners in parallel..."
    - **Execute**: "The plan-executor follows the plan precisely, with elegance checks..."
    - **Verify**: "QA validates across 3 dimensions: Completeness, Correctness, Coherence..."
@@ -90,10 +90,10 @@ Based on the user's interest (ask if unclear), highlight:
 ### For Developers
 - **elegance-reviewer**: Challenges planned approach before execution — "Is there a simpler way?"
 - **plan-executor**: Follows plans precisely, no improvisation. Tests mandatory after every task
-- **gsd-debugger**: Diagnoses failures, creates minimal fix plans (max 3 tasks)
+- **sdd-debugger**: Diagnoses failures, creates minimal fix plans (max 3 tasks)
 
 ### For Leads / PMs
-- **status**: Check progress at any time with `/gsd:status`
+- **status**: Check progress at any time with `/sdd:status`
 - **verify-work**: 3D verification (Completeness/Correctness/Coherence) with severity levels
 - **archive**: Full audit trail with archive summaries
 - **delta specs**: Track how requirements evolved via REQUIREMENTS-CHANGELOG.md
@@ -107,38 +107,38 @@ Based on the user's interest (ask if unclear), highlight:
 Print the quick-reference card:
 
 ```
-━━━ GSD Command Reference ━━━
+━━━ SDD Command Reference ━━━
 
 SETUP
-  /gsd:new-project   — Initialize project (brief → research → roadmap)
-  /gsd:onboard       — This interactive tutorial
+  /sdd:new-project   — Initialize project (brief → research → roadmap)
+  /sdd:onboard       — This interactive tutorial
 
 PLANNING
-  /gsd:discuss-phase — Discuss current phase decisions (1 question at a time)
-  /gsd:plan-phase    — Create execution plans (dual-model: Claude + Codex)
-  /gsd:autopilot     — Plan ALL phases upfront → export for autonomous execution
+  /sdd:discuss-phase — Discuss current phase decisions (1 question at a time)
+  /sdd:plan-phase    — Create execution plans (dual-model: Claude + Codex)
+  /sdd:autopilot     — Plan ALL phases upfront → export for autonomous execution
 
 EXECUTION
-  /gsd:execute-phase — Run plans wave-by-wave with verification
-  /gsd:quick         — Fast path for small tasks (research → plan → execute)
+  /sdd:execute-phase — Run plans wave-by-wave with verification
+  /sdd:quick         — Fast path for small tasks (research → plan → execute)
 
 VERIFICATION
-  /gsd:verify-work   — UAT acceptance (3D: Completeness/Correctness/Coherence)
+  /sdd:verify-work   — UAT acceptance (3D: Completeness/Correctness/Coherence)
 
 MAINTENANCE
-  /gsd:sync-specs    — Merge requirement changes (delta specs) into REQUIREMENTS.md
-  /gsd:archive       — Archive completed phases with full audit trail
-  /gsd:status        — Check progress (phase, state, plan completion %)
-  /gsd:capture-lesson — Record a lesson learned after corrections/failures
-  /gsd:map-codebase  — Deep 5-agent codebase analysis (stack, arch, patterns)
+  /sdd:sync-specs    — Merge requirement changes (delta specs) into REQUIREMENTS.md
+  /sdd:archive       — Archive completed phases with full audit trail
+  /sdd:status        — Check progress (phase, state, plan completion %)
+  /sdd:capture-lesson — Record a lesson learned after corrections/failures
+  /sdd:map-codebase  — Deep 5-agent codebase analysis (stack, arch, patterns)
 ```
 
 ## Step 7: What's Next?
 
 Suggest the best starting point based on context:
-- No project exists → `/gsd:new-project` to set up, or `/gsd:quick "{task}"` for a fast start
-- Project in progress → `/gsd:status` to check where things stand
-- Want autonomous execution → `/gsd:autopilot` to plan everything upfront
-- First time → `/gsd:quick "small improvement"` for a quick win
+- No project exists → `/sdd:new-project` to set up, or `/sdd:quick "{task}"` for a fast start
+- Project in progress → `/sdd:status` to check where things stand
+- Want autonomous execution → `/sdd:autopilot` to plan everything upfront
+- First time → `/sdd:quick "small improvement"` for a quick win
 
 User input: $ARGUMENTS
