@@ -1,11 +1,11 @@
 ---
-description: "Interactive planning across all phases, then export a single self-contained plan for autonomous execution"
+description: "Interactive planning across all phases, then export a single self-contained plan file (no execution)"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
 # GSD: Autopilot
 
-Full interactive GSD planning (with discussions and clarifications), but instead of executing phase-by-phase, all phases are planned upfront and exported into one self-contained plan file for autonomous execution in a fresh Walter session.
+Full interactive GSD planning (with discussions and clarifications), but instead of executing phase-by-phase, all phases are planned upfront and exported into one self-contained plan file. Autopilot is a **planning-only mode** — it does not execute anything.
 
 ## Step 0: Load Lessons
 
@@ -61,22 +61,76 @@ Present the roadmap with all phases to the user for confirmation before proceedi
 
 For each phase in `ROADMAP.md`, do the following **interactively** (do NOT skip discussions):
 
-### 3a. Discuss Phase
+### 3a. Explore Phase
 
-Present the phase scope and discuss with the user:
-- **Approach**: How should we implement this? What patterns to use?
-- **Decisions**: Any technical choices to make?
-- **Risks**: What could go wrong? Edge cases?
-- **Dependencies**: External services, APIs, data sources?
+Before asking the user anything, launch an Explore subagent to analyze the codebase relevant to this phase.
 
-Capture decisions in `.planning/phases/phase-{N}-CONTEXT.md`.
+The agent should investigate:
+- Existing patterns and conventions in code areas this phase will touch
+- Files that will likely be affected (list with paths)
+- Dependencies and interconnections between affected components
+- Test coverage for the affected areas (existing tests, test patterns used)
+- If this phase is SQL-heavy, note that validation queries replace unit tests
 
-### 3b. Research (if needed)
+```
+Agent(subagent_type="Explore", prompt="Analyze the codebase areas relevant to Phase {N}: {phase description}. Investigate: existing patterns and conventions, files that will be affected, dependencies between components, test coverage. Be specific with file paths and line numbers.")
+```
+
+Write findings to `.planning/phases/phase-{N}-EXPLORE.md`.
+
+Present a **3-5 bullet summary** of key findings to the user before proceeding to discussion.
+
+### 3b. Discuss Phase
+
+**CRITICAL**: Ask ONE question at a time using AskFollowupQuestion. Wait for the user's response before asking the next question. Do NOT batch multiple questions into a single message.
+
+#### Question 1: Scope
+Present the phase scope from the roadmap and exploration findings, then ask:
+> "Here's what this phase covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
+
+Wait for response.
+
+#### Question 2: Implementation Approach
+Propose **2-3 implementation approaches** with trade-offs. Lead with the recommended option. Present as a numbered list via AskFollowupQuestion.
+
+**Skip this step** if the approach is obvious (only one reasonable way) or the user already specified it.
+
+Wait for response.
+
+#### Question 3: Key Decisions
+Based on the chosen approach, present specific technical decisions that need to be made. If the decision is open-ended, ask free-form.
+
+Wait for response.
+
+Capture all decisions in `.planning/phases/phase-{N}-CONTEXT.md`:
+
+```markdown
+# Phase {N} Context: {phase name}
+
+## Exploration Summary
+{Key findings from Step 3a — link to full explore doc}
+See: `.planning/phases/phase-{N}-EXPLORE.md`
+
+## Approach
+{Chosen implementation approach and rationale}
+
+## Key Decisions
+- {decision 1}: {rationale}
+- {decision 2}: {rationale}
+
+## Constraints
+- {constraint from discussion}
+
+## Open Questions
+- {anything unresolved — to be addressed during planning}
+```
+
+### 3c. Research (if needed)
 
 If the phase touches existing code, run Claude + Codex research in parallel:
 
 ```
-Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on the files, dependencies, patterns, and risks most likely to affect implementation. Write findings to .claude/research/phase-{N}-research-claude.md")
+Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on: {specific areas from context}. Write findings to .claude/research/phase-{N}-research-claude.md")
 ```
 
 Execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode:
@@ -104,7 +158,7 @@ Merge both into `.claude/research/phase-{N}-research.md` with:
 
 If Codex is unavailable, continue with Claude-only research but explicitly mark degraded mode.
 
-### 3c. Create Phase Plan
+### 3d. Create Phase Plan
 
 Spawn `plan-coordinator` so the final phase plan is synthesized from two independent plan drafts:
 
@@ -125,24 +179,42 @@ RESEARCH:
 ")
 ```
 
-### 3d. Review Plan with User
+### 3e. Validate Plan
 
-Present the created plan to the user. Ask:
+Spawn qa-validator to check the plan before presenting to the user:
+
+```
+Agent(subagent_type="qa-validator", prompt="Review the plan at .planning/phases/phase-{N}-PLAN.md against .planning/REQUIREMENTS.md. Check:
+1. All requirements for this phase are covered
+2. Tasks are in logical order with correct dependencies
+3. Validation commands are present and meaningful
+4. No gaps or ambiguities in the steps
+Report any issues found.")
+```
+
+If qa-validator reports issues, fix the plan before proceeding.
+
+### 3f. Review Plan with User
+
+Present the created plan to the user along with:
+- **qa-validator findings** (issues found and how they were resolved, or confirmation that plan passed)
+- **Agent Notes** section so the user can see where Claude and Codex converged or diverged
+
+Ask:
 - Does this plan look right?
 - Any tasks to add/remove/modify?
 
-Also surface the `## Agent Notes` section so the user can see where Claude and Codex converged or diverged.
-
 Apply any changes before moving to the next phase.
 
-**Repeat 3a-3d for every phase in the roadmap.**
+**Repeat 3a-3f for every phase in the roadmap.**
 
 ## Step 4: Export Combined Plan
 
 After ALL phases are planned:
 
 1. Read all `.planning/phases/phase-*-PLAN.md` files in order.
-2. Create a single self-contained plan file at `.planning/autopilot-PLAN.md`:
+2. Renumber all `### Task N:` headers sequentially across the entire plan (Phase 1 tasks start at 1, Phase 2 tasks continue from where Phase 1 ended, etc.). This ensures every task has a unique number in the final document.
+3. Create a single self-contained plan file at `.planning/autopilot-PLAN.md`:
 
 ```markdown
 # Autopilot Plan: {Project Name}
@@ -151,10 +223,14 @@ After ALL phases are planned:
 {Summary from PROJECT.md — goal, constraints, tech stack}
 
 ## Requirements
-{From REQUIREMENTS.md — must have, should have}
+### Must Have
+{Must-have requirements from REQUIREMENTS.md}
+
+### Should Have
+{Should-have requirements from REQUIREMENTS.md}
 
 ## Codebase Notes
-{Key findings from research, if any — file paths, patterns, conventions}
+{Key findings from research — file paths, patterns, conventions, integration points}
 
 ---
 
@@ -162,11 +238,21 @@ After ALL phases are planned:
 
 {Include full plan content from phase-1-PLAN.md}
 
+### Phase 1 Validation
+```bash
+# validation commands for phase 1
+```
+
 ---
 
 ## Phase 2: {Phase Name}
 
 {Include full plan content from phase-2-PLAN.md}
+
+### Phase 2 Validation
+```bash
+# validation commands for phase 2
+```
 
 ---
 
@@ -184,18 +270,14 @@ After ALL phases are planned:
    - State: EXPORTED
    - Plans: autopilot-PLAN.md
 
-## Step 5: Output Launch Command
+## Step 5: Output Result
 
 Tell the user:
 
 ```
 Plan exported to .planning/autopilot-PLAN.md
 
-To execute in a new Walter session:
-  WALTER_PLAN_FILE=.planning/autopilot-PLAN.md bash plan-executor.sh
-
-Or to execute specific phases:
-  WALTER_WAVE="1,2,3" WALTER_PLAN_FILE=.planning/autopilot-PLAN.md bash plan-executor.sh
+Review the plan and use your preferred execution method when ready.
 ```
 
 User input: $ARGUMENTS
