@@ -106,7 +106,7 @@ Planning flow is dual-model by design:
 - research uses Claude + Codex in parallel and writes merged briefs under `.claude/research/`
 - plan synthesis goes through `sdd/agents/plan-coordinator.md`, which compares independent Claude + Codex drafts and writes the final plan
 - Walter runtime merges repo-owned SDD commands/agents over host `~/.claude` duplicates so container behavior stays aligned with the repo
-- repo-owned SDD agents now include `codebase-researcher`, `walter-planner`, `plan-executor`, `qa-validator`, `plan-coordinator`, `sdd-debugger`, and `elegance-reviewer`
+- repo-owned SDD agents now include `codebase-researcher`, `walter-planner`, `plan-executor`, `qa-validator`, `plan-coordinator`, `sdd-debugger`, `elegance-reviewer`, and `spec-reviewer`
 - Self-improvement loop: `tasks/lessons.md` stores persistent lessons and rules; `sdd/commands/capture-lesson.md` appends new lessons after corrections or failures; `autopilot.md` loads rules at session start; `execute-phase.md` captures lessons after each phase
 - Elegance pause: `plan-executor.md` includes an elegance check before non-trivial tasks; `elegance-reviewer` agent can be spawned for deeper review between plan and execute phases
 - Results documentation: `execute-phase.md` writes `.planning/phases/phase-{N}-RESULTS.md` after each phase with summary, changes, decisions, and validation status
@@ -115,6 +115,7 @@ Planning flow is dual-model by design:
 - Archive workflow: `/sdd:archive` moves completed phase artifacts to `.planning/archive/phase-{N}-{date}/` with summary; prompts for delta spec sync first; supports phase-level and project-level archiving
 - Onboarding: `/sdd:onboard` provides interactive SDD tutorial using the real codebase (~15-30 min)
 - Autopilot integration: `autopilot.md` includes delta specs tracking, 3D final validation, and post-execution sync/archive instructions in exported plans
+- Brainstorming: `/sdd:brainstorm` is a standalone design-before-code command (no SDD project required). Dual-model research → clarifying questions → 2-3 approaches → incremental design → spec with review loop. Specs saved to `docs/designs/`. `spec-reviewer` agent validates specs for completeness, consistency, clarity, scope, and YAGNI before planning
 
 ## Key conventions
 
