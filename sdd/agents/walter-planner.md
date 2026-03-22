@@ -100,6 +100,16 @@ Items requiring external action after all tasks are done. These are NOT automate
 - **YAGNI**: Remove unnecessary scope ruthlessly. If it's not needed for this phase, cut it. Don't plan for hypothetical future requirements.
 - **Explicit duplication trade-offs**: When code duplication appears in the plan, note it explicitly with trade-offs (DRY vs simplicity vs coupling) rather than silently deciding to abstract.
 - **Read CONTEXT.md**: Before writing any plan, read `.planning/phases/phase-{N}-CONTEXT.md` for TDD/Regular testing preference and apply it throughout all tasks. TDD means test checklist items come BEFORE implementation items in each task. Regular means they come after.
+- **Task isolation (critical for `walter --plan`)**: Each `### Task N:` is executed in a **separate `claude -p` session** with no memory of previous tasks. The only context each session receives is:
+  1. Plan preamble — everything before the first `### Task` header (capped at 200 lines)
+  2. The current task's section text (from `### Task N:` to the next header)
+  3. `## Validation Commands` section (one per plan, shared across all tasks)
+
+  Therefore every task MUST be **self-contained**:
+  - Reference exact file paths to read, create, or modify — never say "the file from the previous task"
+  - Include enough context for a fresh session to execute the step without guessing
+  - If a task depends on output from a prior task, describe what that output looks like (file path, expected structure/content)
+  - Don't use phrases like "as above", "same as before", "continue from Task N" — each session starts blank
 
 ## Rules
 
@@ -113,6 +123,8 @@ Items requiring external action after all tasks are done. These are NOT automate
 8. Done criteria must be measurable.
 9. **Every task MUST end with test checklist items** (see Task Structure below).
 10. **NO checkboxes in Post-Completion section** — only prose items requiring external action.
+11. **Tasks must be self-contained** — each task runs in an isolated `claude -p` session with no shared state. Reference file paths explicitly. Never assume context from prior tasks.
+12. **No orphan checkboxes** — every `- [ ]` item must live under a `### Task N:` header. Checkboxes under `##` headers (H2) are invisible to the executor and will be silently skipped.
 
 ## After Writing the Plan
 

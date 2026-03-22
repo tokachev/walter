@@ -247,54 +247,42 @@ After ALL phases are planned:
 
 ## Phase 1: {Phase Name}
 
-{Include full plan content from phase-1-PLAN.md}
-
-### Phase 1 Validation
-```bash
-# validation commands for phase 1
-```
+{Include full plan content from phase-1-PLAN.md with tasks numbered sequentially.
+ Embed phase validation commands as `- [ ]` steps in the LAST task of the phase
+ (e.g., "Run `pytest tests/ -x -q` — all tests must pass").
+ Do NOT create separate `### Phase N Validation` sections — the executor ignores them.}
 
 ---
 
 ## Phase 2: {Phase Name}
 
-{Include full plan content from phase-2-PLAN.md}
-
-### Phase 2 Validation
-```bash
-# validation commands for phase 2
-```
+{Same as above — tasks continue sequential numbering from Phase 1.}
 
 ---
 
 {... repeat for all phases}
 
-## Post-Phase Instructions (apply after each phase)
+### Task {LAST}: Final validation
+- [ ] Run full test suite: `pytest tests/ -v` — all tests pass
+- [ ] Verify all requirements from the Requirements section above are implemented
+- [ ] Verify no regressions: check that pre-existing functionality still works
+- [ ] If requirements changed during implementation, append delta specs to `.planning/REQUIREMENTS-CHANGELOG.md`
 
-### Delta Specs
-After executing each phase, check if requirements changed during implementation:
-- ADDED: new requirements discovered
-- MODIFIED: requirements adjusted based on reality
-- REMOVED: requirements found infeasible
-Append changes to `.planning/REQUIREMENTS-CHANGELOG.md`. Skip if no changes.
-
-### 3D Verification
-Verify each phase across three dimensions:
-1. **Completeness**: All requirements implemented? All tasks [x]?
-2. **Correctness**: Implementation matches spec intent? Edge cases handled?
-3. **Coherence**: Design decisions consistent? No scope creep?
-
-Classify issues as CRITICAL (blocks delivery) / WARNING (should fix) / SUGGESTION (nice to have).
-
-## Final Validation (3D)
-- [ ] **Completeness**: All requirements from REQUIREMENTS.md implemented and verified
-- [ ] **Correctness**: All phase validation commands pass, edge cases handled
-- [ ] **Coherence**: All changes consistent with design decisions, no scope creep
-- [ ] Delta specs synced to REQUIREMENTS.md
-- [ ] No regressions introduced
+## Validation Commands
+```bash
+# Commands the executor runs after every task (keep minimal — per-phase checks go inside tasks)
+pytest tests/ -x -q
+```
 ```
 
 **Important**: The exported plan must be **self-contained** — it includes all context, requirements, and codebase notes needed for execution. A fresh Claude session reading only this file should understand everything.
+
+**Task isolation**: When executed via `walter --plan`, each `### Task N:` runs in a **separate `claude -p` session** with zero shared state. Each session only sees: (1) the plan preamble (everything before the first `### Task` header, capped at 200 lines), (2) the current task section, (3) `## Validation Commands`. Therefore:
+- Every task must reference exact file paths — never "the file from the previous task"
+- Every task must be executable by a fresh session with no knowledge of prior tasks' execution
+- Never use phrases like "as above", "same as before", "continue from Task N"
+- If a task depends on prior output, describe the expected file path and content structure
+- All `- [ ]` checkboxes must be under `### Task N:` headers — checkboxes under `##` (H2) headers are invisible to the executor
 
 3. Update `.planning/STATE.md`:
    - State: EXPORTED
