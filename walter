@@ -106,7 +106,7 @@ while [[ $# -gt 0 ]]; do
     --bq-credentials) BQ_CREDENTIALS="$2"; shift 2 ;;
     --bq-mcp-config) BQ_MCP_CONFIG="$2"; shift 2 ;;
     --gcloud)       GCLOUD_ADC=true; shift ;;
-    --plan)         PLAN_FILE="$2"; shift 2 ;;
+    -p|--plan)      PLAN_FILE="$2"; shift 2 ;;
     --plan-max-iter) PLAN_MAX_ITERATIONS="$2"; shift 2 ;;
     --plan-retries) PLAN_RETRY_COUNT="$2"; shift 2 ;;
     --cost-budget)  COST_BUDGET="$2"; shift 2 ;;
@@ -202,11 +202,15 @@ if [ -d "$CLAUDE_HOME/skills" ]; then
   MOUNTS+=(-v "$CLAUDE_HOME/skills:/opt/claude-home/.claude/skills:ro")
 fi
 
-# Persist session data for Insights: mount ~/.claude/projects so all
-# Walter sessions are visible to the host's `claude insights` command
-PROJECTS_DIR="$CLAUDE_HOME/projects"
-mkdir -p "$PROJECTS_DIR"
-MOUNTS+=(-v "$PROJECTS_DIR:/opt/claude-home/.claude/projects")
+# Persist session data for Insights: mount project-specific dir so each
+# project's sessions, memory, and insights stay isolated on the host.
+# Inside the container the workdir is always /workspace, so Claude Code
+# writes to ~/.claude/projects/-workspace/. We map that to a per-project
+# host dir: ~/.claude/projects/-workspace-<project_name>/
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+PROJECTS_HOST_DIR="$CLAUDE_HOME/projects/-workspace-${PROJECT_NAME}"
+mkdir -p "$PROJECTS_HOST_DIR"
+MOUNTS+=(-v "$PROJECTS_HOST_DIR:/opt/claude-home/.claude/projects/-workspace")
 
 # ── Safe .env parser ─────────────────────────────────────────
 # Parses KEY=VALUE pairs without shell execution (no source/eval).
@@ -256,6 +260,9 @@ ENV_VARS=(
 
 [ "$HOST_CLAUDE_AGENTS_MOUNTED" = true ] && ENV_VARS+=(-e "WALTER_HOST_AGENTS_MOUNTED=1")
 [ "$HOST_CLAUDE_COMMANDS_MOUNTED" = true ] && ENV_VARS+=(-e "WALTER_HOST_COMMANDS_MOUNTED=1")
+
+# Pass host project path so container can map auto-memory to the correct project ID
+ENV_VARS+=(-e "WALTER_HOST_PROJECT_DIR=$PROJECT_DIR")
 
 if [ -f "$SCRIPT_DIR/.env" ]; then
   set -a
@@ -569,6 +576,12 @@ SESEOF
 
 # Mount session dir as /var/log/walter/ inside container
 MOUNTS+=(-v "$SESSION_DIR:/var/log/walter")
+
+# Persistent corrections log (survives across sessions)
+CORRECTIONS_DIR="$HOME/.walter/corrections"
+mkdir -p "$CORRECTIONS_DIR"
+MOUNTS+=(-v "$CORRECTIONS_DIR:/var/log/walter/corrections")
+ENV_VARS+=(-e "WALTER_PROJECT_NAME=$(basename "$PROJECT_DIR")")
 
 # ── Entrypoint args (network-lock allowlist) ─────────────────
 ENTRYPOINT_ARGS=()

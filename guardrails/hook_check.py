@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from audit import log_tool_call
 from circuit_breaker import check as cb_check
 from cost_tracker import is_budget_exceeded
+from correction_detector import check_edit
 
 
 def main():
@@ -58,7 +59,14 @@ def main():
         print(reason)
         sys.exit(1)
 
-    # 3. Log the tool call (audit)
+    # 3. Correction detection (Edit only, non-blocking)
+    if tool_name == "Edit":
+        try:
+            check_edit(tool_input, session_id=session_id)
+        except Exception:
+            pass  # Never block on observation failure
+
+    # 4. Log the tool call (audit)
     log_tool_call(tool_name, tool_input, session_id=session_id)
 
     sys.exit(0)

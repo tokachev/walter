@@ -52,6 +52,41 @@
             "type": "command",
             "command": "/opt/hooks/credential-guard.sh bash",
             "statusMessage": "Scanning for credentials..."
+          },
+          {
+            "type": "command",
+            "command": "/opt/hooks/memory-project-validator.sh",
+            "statusMessage": "Checking memory project..."
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/large-file-guard.sh",
+            "statusMessage": "Checking file size..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/duplicate-checker.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/hooks/duplicate-checker.sh"
           }
         ]
       }

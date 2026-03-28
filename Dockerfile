@@ -12,7 +12,7 @@ RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=3
 
-RUN pip install --break-system-packages chromadb rank_bm25 networkx pytest
+RUN pip install --break-system-packages chromadb rank_bm25 networkx pytest openpyxl
 
 # MCP server: read-only Snowflake access
 COPY mcp/ /opt/mcp/
@@ -39,6 +39,7 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 # Native hooks: credential-guard scanner + hook script
 COPY hooks/ /opt/hooks/
 RUN chmod +x /opt/hooks/credential-guard.sh /opt/hooks/scan-credentials.sh /opt/hooks/review-plan.sh /opt/hooks/statusline-command.sh /opt/hooks/inject-temporal-context.sh \
+    /opt/hooks/duplicate-checker.sh /opt/hooks/memory-project-validator.sh /opt/hooks/large-file-guard.sh \
     && ln -s /opt/hooks/review-plan.sh /usr/local/bin/review-plan
 
 # Guardrails: audit log, circuit breaker, cost tracker, SQL guard

@@ -116,6 +116,12 @@ Planning flow is dual-model by design:
 - Onboarding: `/sdd:onboard` provides interactive SDD tutorial using the real codebase (~15-30 min)
 - Autopilot integration: `autopilot.md` includes delta specs tracking, 3D final validation, and post-execution sync/archive instructions in exported plans
 
+## SQL conventions
+
+- Always use explicit column lists in INSERT and SELECT. Never use `SELECT *` in UNION ALL queries.
+- When refactoring SQL, verify column count and order match across all branches before and after.
+- Never truncate table or column names in output — display full identifiers even if long.
+
 ## Key conventions
 
 - **Auth flow**: Walter's own `.env` has `CLAUDE_CODE_OAUTH_TOKEN`. Project credentials (Snowflake, BigQuery, OpenAI) come from the project's `.env` via a safe parser (no `source`/`eval`).

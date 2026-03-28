@@ -248,6 +248,27 @@ elif [ -f "$HOST_SETTINGS" ]; then
   echo "  ✓ Host settings applied"
 fi
 
+# ── Auto-memory: map to host project path ────────────────────
+# Inside the container the project lives at /workspace, so Claude Code would
+# store auto-memory under ~/.claude/projects/-workspace/memory/.  That key is
+# meaningless on the host.  We redirect it to the host-derived project ID so
+# memory persists across sessions and doesn't collide between parallel Walter
+# instances running different projects.
+if [ -n "${WALTER_HOST_PROJECT_DIR:-}" ]; then
+  HOST_PROJECT_ID=$(echo "$WALTER_HOST_PROJECT_DIR" | sed 's|/|-|g')
+  MEMORY_DIR="$HOME/.claude/projects/${HOST_PROJECT_ID}/memory"
+  mkdir -p "$MEMORY_DIR"
+
+  CONTAINER_SETTINGS="${CONTAINER_SETTINGS:-$HOME/.claude/settings.json}"
+  if [ -f "$CONTAINER_SETTINGS" ]; then
+    UPDATED=$(jq --arg dir "$MEMORY_DIR" '.autoMemoryDirectory = $dir' "$CONTAINER_SETTINGS" 2>/dev/null) || true
+    [ -n "$UPDATED" ] && echo "$UPDATED" > "$CONTAINER_SETTINGS"
+  else
+    echo "{\"autoMemoryDirectory\": \"$MEMORY_DIR\"}" > "$CONTAINER_SETTINGS"
+  fi
+  echo "  ✓ Auto-memory → $MEMORY_DIR (host: $WALTER_HOST_PROJECT_DIR)"
+fi
+
 # ── MCP servers ──────────────────────────────────────────────
 MCP_ARGS=()
 MCP_CONFIG="/tmp/mcp-config.json"
