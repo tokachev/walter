@@ -65,6 +65,11 @@ COPY dashboard/ /opt/dashboard/
 COPY review/ /opt/review/
 RUN chmod +x /opt/review/review-executor.sh
 
+# Autoresearch runner
+COPY autoresearch/examples/ /opt/autoresearch/examples/
+COPY autoresearch.sh autoresearch-lib.sh autoresearch-program.md /opt/autoresearch/
+RUN chmod +x /opt/autoresearch/autoresearch.sh /opt/autoresearch/examples/*.sh
+
 # SDD: commands and agents for spec-driven development workflow
 COPY sdd/commands/ /opt/sdd/commands/
 COPY sdd/agents/ /opt/sdd/agents/
