@@ -1,5 +1,5 @@
 ---
-description: "Initialize a new SDD project with interactive brief, requirements, roadmap, and state tracking"
+description: "Use to start a new SDD project. Trigger: 'new project', 'новый проект', 'start SDD', 'начинаем проект'"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 

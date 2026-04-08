@@ -1,5 +1,5 @@
 ---
-description: "Fast path: create a compact dual-model plan and execute immediately"
+description: "Use for small tasks that don't need full SDD. Trigger: 'quick', 'быстро сделай', 'just do it', 'сделай по-быстрому'"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 

@@ -106,15 +106,15 @@ Planning flow is dual-model by design:
 - research uses Claude + Codex in parallel and writes merged briefs under `.claude/research/`
 - plan synthesis goes through `sdd/agents/plan-coordinator.md`, which compares independent Claude + Codex drafts and writes the final plan
 - Walter runtime merges repo-owned SDD commands/agents over host `~/.claude` duplicates so container behavior stays aligned with the repo
-- repo-owned SDD agents now include `codebase-researcher`, `walter-planner`, `plan-executor`, `qa-validator`, `plan-coordinator`, `sdd-debugger`, and `elegance-reviewer`
-- Self-improvement loop: `tasks/lessons.md` stores persistent lessons and rules; `sdd/commands/capture-lesson.md` appends new lessons after corrections or failures; `autopilot.md` loads rules at session start; `execute-phase.md` captures lessons after each phase
-- Elegance pause: `plan-executor.md` includes an elegance check before non-trivial tasks; `elegance-reviewer` agent can be spawned for deeper review between plan and execute phases
-- Results documentation: `execute-phase.md` writes `.planning/phases/phase-{N}-RESULTS.md` after each phase with summary, changes, decisions, and validation status
-- Delta specs: requirement changes tracked as ADDED/MODIFIED/REMOVED in `.planning/REQUIREMENTS-CHANGELOG.md` during execution; merged into `REQUIREMENTS.md` via `/sdd:sync-specs`
-- 3D verification: qa-validator evaluates delivery across Completeness, Correctness, and Coherence dimensions with CRITICAL/WARNING/SUGGESTION severity; `verify-work.md` presents results in the same 3D structure
-- Archive workflow: `/sdd:archive` moves completed phase artifacts to `.planning/archive/phase-{N}-{date}/` with summary; prompts for delta spec sync first; supports phase-level and project-level archiving
-- Onboarding: `/sdd:onboard` provides interactive SDD tutorial using the real codebase (~15-30 min)
-- Autopilot integration: `autopilot.md` includes delta specs tracking, 3D final validation, and post-execution sync/archive instructions in exported plans
+- repo-owned SDD agents: `codebase-researcher`, `walter-planner`, `plan-executor`, `qa-validator`, `plan-coordinator`, `sdd-debugger`, `elegance-reviewer`
+- Self-improvement: lessons in `tasks/lessons.md`, captured via `/sdd:capture-lesson`
+- Elegance pause: `elegance-reviewer` agent reviews approach before non-trivial tasks
+- Results: `.planning/phases/phase-{N}-RESULTS.md` written after each phase
+- Delta specs: tracked in `.planning/REQUIREMENTS-CHANGELOG.md`, synced via `/sdd:sync-specs`
+- 3D verification: Completeness × Correctness × Coherence with CRITICAL/WARNING/SUGGESTION severity
+- Archive: `/sdd:archive` for completed phases/projects
+- Onboarding: `/sdd:onboard` — interactive tutorial (~15-30 min)
+- Autopilot: `/sdd:autopilot` — plan all phases upfront, export single plan file
 
 ## SQL conventions
 

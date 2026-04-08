@@ -1,5 +1,5 @@
 ---
-description: "Archive completed phases or entire project with full audit trail"
+description: "Use when user says 'archive', 'архивируй', 'clean up phase', or after phase completion"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 

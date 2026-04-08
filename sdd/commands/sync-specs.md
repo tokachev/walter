@@ -1,5 +1,5 @@
 ---
-description: "Merge delta specs from changelog into main REQUIREMENTS.md"
+description: "Use after execution to sync requirement changes. Trigger: 'sync specs', 'синхронизируй требования', 'merge deltas'"
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 

@@ -1,11 +1,11 @@
 ---
-description: "Interactive planning across all phases, then export a single self-contained plan file (no execution)"
+description: "Use for full project planning and execution. Trigger: 'autopilot', 'автопилот', 'plan everything', 'спланируй всё'"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
 # SDD: Autopilot
 
-Full interactive SDD planning (with discussions and clarifications), but instead of executing phase-by-phase, all phases are planned upfront and exported into one self-contained plan file. Autopilot is a **planning-only mode** — it does not execute anything.
+Full interactive SDD planning (with discussions and clarifications): all phases are planned upfront, exported into one self-contained plan file, and then executed task-by-task — each task in a separate agent.
 
 ## Step 0: Load Lessons
 
@@ -277,7 +277,7 @@ pytest tests/ -x -q
 
 **Important**: The exported plan must be **self-contained** — it includes all context, requirements, and codebase notes needed for execution. A fresh Claude session reading only this file should understand everything.
 
-**Task isolation**: When executed via `walter --plan`, each `### Task N:` runs in a **separate `claude -p` session** with zero shared state. Each session only sees: (1) the plan preamble (everything before the first `### Task` header, capped at 200 lines), (2) the current task section, (3) `## Validation Commands`. Therefore:
+**Task isolation**: Each `### Task N:` runs in a **separate agent** with zero shared state. Each agent only sees: (1) the plan preamble (everything before the first `### Task` header, capped at 200 lines), (2) the current task section, (3) `## Validation Commands`. Therefore:
 - Every task must reference exact file paths — never "the file from the previous task"
 - Every task must be executable by a fresh session with no knowledge of prior tasks' execution
 - Never use phrases like "as above", "same as before", "continue from Task N"
@@ -288,14 +288,74 @@ pytest tests/ -x -q
    - State: EXPORTED
    - Plans: autopilot-PLAN.md
 
-## Step 5: Output Result
+## Step 5: Execute Plan
+
+**CRITICAL**: Do NOT proceed to execution until the user explicitly confirms the plan. Present the exported plan summary and ask:
+> "План экспортирован в `.planning/autopilot-PLAN.md`. Запускать выполнение?"
+
+Wait for explicit confirmation (e.g., "да", "go", "запускай"). If the user wants changes — apply them first, re-present, and ask again.
+
+After the user confirms, execute each task in a **separate agent**.
+
+1. Read `.planning/autopilot-PLAN.md`.
+2. Extract the **preamble** — everything before the first `### Task` header (capped at 200 lines).
+3. Extract the `## Validation Commands` section.
+4. Parse all `### Task N: {title}` sections.
+
+For each task **sequentially** (tasks depend on prior ones):
+
+```
+Agent(subagent_type="plan-executor", prompt="
+You are executing a single task from a larger plan.
+
+## Plan Context
+{preamble}
+
+## Your Task
+{full content of ### Task N, including all checklist items}
+
+## Validation Commands
+{validation commands section}
+
+Execute this task precisely. Mark items as [x] when done. Run validation commands after completion.
+If blocked, report the blocker — do not guess or skip.
+")
+```
+
+After each agent completes:
+- Check the agent's result for blockers or failures
+- If a task failed, stop execution and report to the user — do NOT proceed to the next task
+- If successful, continue to the next task
+
+Update `.planning/STATE.md` to `State: EXECUTING` at the start of this step.
+
+## Step 6: Verify Delivery
+
+After all tasks complete, spawn qa-validator:
+
+```
+Agent(subagent_type="qa-validator", prompt="Verify that the plan at .planning/autopilot-PLAN.md has been fully executed. Check:
+1. All requirements from .planning/REQUIREMENTS.md are implemented
+2. Validation commands pass
+3. git diff shows expected changes
+4. No regressions introduced
+Report pass/fail for each requirement.")
+```
+
+If qa-validator reports failures:
+1. Spawn sdd-debugger to diagnose and create a fix plan
+2. Execute the fix plan (each task in a separate agent, same pattern as Step 5)
+3. Re-verify. If still failing after 2 fix cycles, stop and report to user.
+
+If verification passes, update `.planning/STATE.md` to `State: PHASE_COMPLETE`.
+
+## Step 7: Output Result
 
 Tell the user:
 
 ```
-Plan exported to .planning/autopilot-PLAN.md
-
-Review the plan and use your preferred execution method when ready.
+Plan executed and verified.
+Results: .planning/autopilot-PLAN.md
 ```
 
 After execution completes successfully, run:

@@ -1,6 +1,6 @@
 ---
 name: plan-coordinator
-description: "Orchestrates parallel dual-model planning for SDD: launch Claude planner and Codex planner from the same inputs, compare both independent drafts, and synthesize one final execution plan."
+description: "Use for creating dual-model execution plans during SDD plan-phase. Spawned by plan-phase command when coordinated planning is needed."
 tools: Agent, Bash, Read, Write, Edit, Glob, Grep
 model: opus
 ---

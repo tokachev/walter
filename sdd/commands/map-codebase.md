@@ -1,5 +1,5 @@
 ---
-description: "Deep codebase analysis: spawn parallel researchers for stack, architecture, conventions, and concerns"
+description: "Use for 'map codebase', 'analyze the codebase', 'изучи кодовую базу', or before starting work on unfamiliar repo"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 

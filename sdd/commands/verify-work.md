@@ -1,5 +1,5 @@
 ---
-description: "Present deliverables to user for UAT acceptance and handle issues"
+description: "Use after execution to check results. Trigger: 'verify', 'проверь работу', 'accept', 'покажи что сделано'"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 

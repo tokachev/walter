@@ -1,5 +1,5 @@
 ---
-description: "Research codebase, create execution plans, and validate them for current phase"
+description: "Use after discuss-phase to create plans. Trigger: 'plan', 'планируй', 'create plan', 'напиши план'"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 

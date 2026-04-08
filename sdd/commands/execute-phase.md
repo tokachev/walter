@@ -1,5 +1,5 @@
 ---
-description: "Execute plans for current phase with wave-based parallelism and verification"
+description: "Use after planning to run current phase. Trigger: 'execute', 'выполняй', 'run the plan', 'запускай'"
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
 ---
 
