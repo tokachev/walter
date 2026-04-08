@@ -79,11 +79,34 @@ After the coordinator finishes, verify `.planning/phases/quick-PLAN.md` exists a
 
 ## Step 4: Execute
 
-Spawn `plan-executor`:
+Parse `.planning/phases/quick-PLAN.md` before execution:
+1. Extract the **preamble** — everything before the first `### Task` header, capped at 200 lines
+2. Extract the `## Validation Commands` section
+3. Parse all `### Task N: {title}` sections
+
+**Execute each `### Task N:` in a separate plan-executor agent** (one agent per task, not one agent for the whole plan). Tasks run sequentially:
 
 ```
-Agent(subagent_type="plan-executor", prompt="Execute the plan at .planning/phases/quick-PLAN.md. Follow each task. Mark items [x] when done. Run validation commands.")
+Agent(subagent_type="plan-executor", prompt="
+You are executing a single task from a larger plan.
+
+## Plan Context
+{preamble}
+
+## Your Task
+{full content of ### Task N, including all checklist items}
+
+## Validation Commands
+{validation commands section}
+
+Execute this task precisely. Mark items as [x] when done. Run validation commands after completion.
+If blocked, report the blocker — do not guess or skip.
+")
 ```
+
+After each agent returns:
+- If the task failed, stop and report to the user — do NOT proceed to the next task
+- If successful, continue to the next task
 
 ## Step 5: Report
 

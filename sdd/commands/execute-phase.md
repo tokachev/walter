@@ -19,15 +19,42 @@ You are executing the plans for the current SDD phase.
 
 ## Step 2: Execute Wave by Wave
 
-For each wave, spawn plan-executor agents:
+For each wave, process every plan in that wave. Plans within the same wave can run in parallel; tasks within a single plan run sequentially.
+
+**Parse each plan file before execution:**
+1. Read the plan file
+2. Extract the **preamble** — everything before the first `### Task` header, capped at 200 lines
+3. Extract the `## Validation Commands` section
+4. Parse all `### Task N: {title}` sections
+
+**Execute each `### Task N:` in a separate plan-executor agent** (one agent per task, not one agent per plan). Zero shared state between tasks — each agent only sees preamble + its own task + validation commands:
 
 ```
-Agent(subagent_type="plan-executor", prompt="Execute the plan at .planning/phases/{plan-file}. Follow each task sequentially. Mark items as [x] when done. Run validation commands after each task.")
+Agent(subagent_type="plan-executor", prompt="
+You are executing a single task from a larger plan.
+
+## Plan Context
+{preamble}
+
+## Your Task
+{full content of ### Task N, including all checklist items}
+
+## Validation Commands
+{validation commands section}
+
+Execute this task precisely. Mark items as [x] when done. Run validation commands after completion.
+If blocked, report the blocker — do not guess or skip.
+")
 ```
 
-If running multiple plans in a wave, spawn them in parallel.
+After each agent returns:
+- Check the result for blockers or failures
+- If a task failed, **stop execution of this plan** and report to the user — do NOT proceed to the next task in the same plan
+- If successful, continue to the next task in the same plan
 
-Wait for all agents in a wave to complete before starting the next wave.
+Wait for all plans in a wave to complete before starting the next wave.
+
+**Why per-task agents**: prevents context bleed between tasks, keeps each agent's window focused, makes failures resumable from any task, and matches the isolation contract documented under "Task isolation" in plans.
 
 ## Step 3: Verify Delivery
 
@@ -50,11 +77,7 @@ If qa-validator reports failures, spawn sdd-debugger:
 Agent(subagent_type="sdd-debugger", prompt="Diagnose verification failures for Phase {N}. QA report: {qa output}. Create a fix plan at .planning/phases/phase-{N}-FIX-PLAN.md")
 ```
 
-Then execute the fix plan:
-
-```
-Agent(subagent_type="plan-executor", prompt="Execute the fix plan at .planning/phases/phase-{N}-FIX-PLAN.md")
-```
+Then execute the fix plan **using the same per-task pattern as Step 2**: parse preamble + `### Task N:` sections + `## Validation Commands`, then spawn one plan-executor agent per task sequentially. Do NOT pass the whole FIX-PLAN.md to a single agent.
 
 Re-verify after fix. If still failing after 2 fix cycles, stop and report to user.
 
