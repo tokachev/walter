@@ -26,10 +26,6 @@ docker build -t walter:latest .
 
 # Allow extra network domains
 ./walter -a "pypi.org,files.pythonhosted.org" -d ./my-project
-
-# Real-time dashboard (runs on host, monitors all sessions)
-./walter dashboard
-./walter dashboard --port 8080
 ```
 
 ## Testing
@@ -39,20 +35,19 @@ No test framework. The only test is a manual smoke test for the BigQuery MCP ser
 BQ_MCP_TEST_CONFIG=/path/to/config.json python3 mcp/bigquery/test_smoke.py
 ```
 
-Validate shell scripts and dashboard:
+Validate shell scripts:
 ```bash
 bash -n walter
 bash -n network-lock.sh
 bash -n plan-executor.sh
 bash -n review/review-executor.sh
-node --check dashboard/server.js
 ```
 
 ## Architecture
 
 ### Execution layers (outer → inner)
 
-1. **`walter`** (bash) — Host-side Docker orchestrator. Parses flags, resolves credentials/mounts, assembles `docker run`. Sources auth from `./walter/.env`, project credentials from `<project>/.env`. Creates per-session log directories at `~/.walter/sessions/<project>-<timestamp>/` and mounts them into the container as `/var/log/walter/`. Also provides `walter dashboard` subcommand (host-side Node.js, no Docker).
+1. **`walter`** (bash) — Host-side Docker orchestrator. Parses flags, resolves credentials/mounts, assembles `docker run`. Sources auth from `./walter/.env`, project credentials from `<project>/.env`.
 
 2. **`network-lock.sh`** (container entrypoint) — iptables firewall. Only `api.anthropic.com` allowed by default; extra domains via `--allowlist`. IPv6 fully blocked. Background DNS refresh every 5 min.
 
@@ -79,14 +74,6 @@ Parses `### Task N:` headers from markdown plans. Each task runs in a fresh `cla
 - Phase 3: 2 final agents (final-impl, final-quality) → verdict
 
 Agent definitions in `review/agents/*.md`, evaluation prompts in `review/prompts/*.md`.
-
-### Dashboard (`dashboard/`)
-
-Host-side real-time monitoring UI. Runs via `walter dashboard` (NOT inside the container).
-- **`dashboard/server.js`** — Node.js HTTP + SSE server. Watches `~/.walter/sessions/*/` for all active/historical sessions. Tails `audit.jsonl`, `progress.jsonl`, polls `cost.json`. Auto-discovers new sessions every 2s.
-- **`dashboard/ui.html`** — Single HTML file with embedded CSS/JS. Three-column layout: session list (left), log stream (center), plan + metrics (right). SSE via EventSource, per-session color coding.
-- **Session structure** (`~/.walter/sessions/<id>/`): `session.json` (metadata), `audit.jsonl`, `progress.jsonl`, `cost.json`, `done` (written by `walter` on container exit).
-- **`plan-executor.sh`** writes structured progress events to `/var/log/walter/progress.jsonl` (plan_start, task_start, task_end, task_failed, plan_complete).
 
 ### SDD workflow (`sdd/`)
 

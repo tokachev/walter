@@ -67,17 +67,10 @@ if [ -n "${WALTER_CLAUDE_ARGS_STR:-}" ]; then
   read -ra CLAUDE_ARGS <<< "${WALTER_CLAUDE_ARGS_STR:-}"
 fi
 
-# ── Progress file setup ─────────────────────────────────────
-PROGRESS_FILE="${PROGRESS_FILE:-/var/log/walter/progress.jsonl}"
-mkdir -p /var/log/walter
-
 # ── Results file: write header only if file doesn't exist ───
 if [ ! -f "$RESULTS_FILE" ]; then
   printf 'iteration\tmetric\tdescription\tstatus\ttimestamp\n' > "$RESULTS_FILE"
 fi
-
-# ── Emit session_start ──────────────────────────────────────
-log_progress "\"event\":\"session_start\",\"tag\":\"$TAG\",\"target_file\":\"$TARGET_FILE\",\"max_iterations\":$MAX_ITERATIONS"
 
 # ── Baseline run ────────────────────────────────────────────
 log "Running baseline eval..."
@@ -121,7 +114,6 @@ for ((iteration=1; ; iteration++)); do
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   log "Iteration $iteration"
-  log_progress "\"event\":\"experiment_start\",\"iteration\":$iteration,\"tag\":\"$TAG\",\"current_metric\":\"$CURRENT_METRIC\""
 
   # Build prompt from template
   prompt=$(sed \
@@ -155,7 +147,6 @@ for ((iteration=1; ; iteration++)); do
       log_ok "Iteration $iteration: improvement detected (metric=$new_metric)"
       git_experiment_keep "$iteration" "$new_metric"
       log_result "$iteration" "$new_metric" "iteration-${iteration}" "keep"
-      log_progress "\"event\":\"experiment_improved\",\"iteration\":$iteration,\"metric\":\"$new_metric\",\"tag\":\"$TAG\""
       CURRENT_METRIC="$new_metric"
       ;;
     *)
@@ -167,11 +158,8 @@ for ((iteration=1; ; iteration++)); do
       fi
       git_experiment_discard "$iteration" "$new_metric"
       log_result "$iteration" "$new_metric" "iteration-${iteration}" "discard"
-      log_progress "\"event\":\"experiment_discarded\",\"iteration\":$iteration,\"metric\":\"$new_metric\",\"tag\":\"$TAG\""
       ;;
   esac
-
-  log_progress "\"event\":\"experiment_end\",\"iteration\":$iteration,\"tag\":\"$TAG\""
 
   sleep 2
 done
@@ -198,7 +186,5 @@ echo "  Best metric:      $best_metric"
 echo "  Baseline:         $BASELINE_METRIC"
 echo "══════════════════════════════════════════════════════"
 echo ""
-
-log_progress "\"event\":\"session_end\",\"tag\":\"$TAG\",\"total_iterations\":$total_iterations,\"kept\":$kept_count,\"discarded\":$discarded_count,\"best_metric\":\"$best_metric\""
 
 exit 0

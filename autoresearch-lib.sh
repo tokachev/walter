@@ -3,15 +3,14 @@
 #  autoresearch-lib.sh — Helper library for autoresearch loop
 #
 #  Source this file; do not execute directly.
-#  Provides: logging, progress events, eval execution,
-#            results tracking, and git experiment management.
+#  Provides: logging, eval execution, results tracking,
+#            and git experiment management.
 # ══════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────
 
-PROGRESS_FILE="${PROGRESS_FILE:-/var/log/walter/progress.jsonl}"
 RESULTS_FILE="${RESULTS_FILE:-results.tsv}"
 
 # ── Logging ─────────────────────────────────────────────────
@@ -20,14 +19,6 @@ log()      { echo "▸ $*"; }
 log_ok()   { echo "  ✓ $*"; }
 log_err()  { echo "  ✗ $*" >&2; }
 log_warn() { echo "  ⚠ $*"; }
-
-# log_progress — write a structured JSON line to $PROGRESS_FILE
-# Usage: log_progress '"event":"session_start","tag":"my-tag"'
-log_progress() {
-  local ts
-  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  echo "{\"ts\":\"$ts\",$1}" >> "$PROGRESS_FILE" 2>/dev/null || true
-}
 
 # log_result — append one TSV row to $RESULTS_FILE
 # Usage: log_result <iteration> <metric_value> <description> <status>

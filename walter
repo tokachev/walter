@@ -8,23 +8,6 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ── Subcommands ──────────────────────────────────────────────
-if [ "${1:-}" = "dashboard" ]; then
-  shift
-  DASH_PORT="${WALTER_DASHBOARD_PORT:-19433}"
-  SESSIONS_DIR="${HOME}/.walter/sessions"
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --port|-p) DASH_PORT="$2"; shift 2 ;;
-      --sessions-dir) SESSIONS_DIR="$2"; shift 2 ;;
-      -h|--help) echo "Usage: walter dashboard [--port PORT] [--sessions-dir DIR]"; exit 0 ;;
-      *) echo "Unknown dashboard option: $1"; exit 1 ;;
-    esac
-  done
-  mkdir -p "$SESSIONS_DIR"
-  exec node "$SCRIPT_DIR/dashboard/server.js" --sessions-dir "$SESSIONS_DIR" --port "$DASH_PORT"
-fi
-
 IMAGE_NAME="walter"
 IMAGE_TAG="latest"
 
@@ -44,12 +27,10 @@ REVIEW_ONLY=false
 usage() {
   cat << 'EOF'
 Usage: walter [options] [claude args...]
-       walter dashboard [--port PORT]
 
 Launches Claude Code inside a Docker container with:
   - Network firewall (only api.anthropic.com allowed)
   - Credential-guard plugin (blocks secrets in files)
-  - Session logging to ~/.walter/sessions/ (visible via 'walter dashboard')
 
 Options:
   -d, --dir <path>         Project directory (default: current dir)
@@ -66,11 +47,6 @@ Options:
   --build                  Rebuild Docker image
   -h, --help               Show this help
 
-Subcommands:
-  dashboard                Start the web dashboard (monitors all sessions)
-    --port PORT            Dashboard port (default: 19433)
-    --sessions-dir DIR     Sessions directory (default: ~/.walter/sessions)
-
 Auth: CLAUDE_CODE_OAUTH_TOKEN from walter .env
 
 Project credentials from <project>/.env:
@@ -85,8 +61,6 @@ Examples:
   walter -d ./my-project -p "Fix bug #42"   # pass -p flag
   walter --allow "pypi.org" -d ./project
   walter --plan .claude/plans/my-plan.md -d ./project  # execute plan
-  walter dashboard                                     # open web dashboard
-  walter dashboard --port 8080                         # custom port
 EOF
   exit 1
 }
@@ -501,33 +475,6 @@ fi
 [ "$REVIEW" = true ] && ENV_VARS+=(-e "WALTER_REVIEW=true")
 [ "$REVIEW_ONLY" = true ] && ENV_VARS+=(-e "WALTER_REVIEW_ONLY=true")
 
-# ── Session directory (host-side logging for dashboard) ──────
-SESSIONS_DIR="$HOME/.walter/sessions"
-SESSION_ID="$(basename "$PROJECT_DIR")-$(date +%s)"
-SESSION_DIR="$SESSIONS_DIR/$SESSION_ID"
-mkdir -p "$SESSION_DIR" && chmod 777 "$SESSION_DIR"
-
-# Write session metadata
-cat > "$SESSION_DIR/session.json" << SESEOF
-{
-  "id": "$SESSION_ID",
-  "project_dir": "$PROJECT_DIR",
-  "project_name": "$(basename "$PROJECT_DIR")",
-  "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "plan_file": "${PLAN_FILE_REL:-}",
-  "mode": "$([ -n "$PLAN_FILE" ] && echo "plan" || echo "interactive")"
-}
-SESEOF
-
-# Mount session dir as /var/log/walter/ inside container
-MOUNTS+=(-v "$SESSION_DIR:/var/log/walter")
-
-# Persistent corrections log (survives across sessions)
-CORRECTIONS_DIR="$HOME/.walter/corrections"
-mkdir -p "$CORRECTIONS_DIR"
-MOUNTS+=(-v "$CORRECTIONS_DIR:/var/log/walter/corrections")
-ENV_VARS+=(-e "WALTER_PROJECT_NAME=$(basename "$PROJECT_DIR")")
-
 # ── Entrypoint args (network-lock allowlist) ─────────────────
 ENTRYPOINT_ARGS=()
 [ -n "$EXTRA_DOMAINS" ] && ENTRYPOINT_ARGS+=(--allowlist "$EXTRA_DOMAINS")
@@ -597,9 +544,6 @@ echo "     iptables + ip6tables firewall"
 echo "     credential-guard hooks"
 echo "     no-new-privileges"
 echo ""
-echo "  Session: $SESSION_ID"
-echo "     Logs: $SESSION_DIR"
-echo "     View: walter dashboard"
 echo "══════════════════════════════════════════════════════"
 echo ""
 
@@ -607,9 +551,8 @@ echo ""
 INTERACTIVE_FLAG="-it"
 [ -t 0 ] || INTERACTIVE_FLAG="-i"
 
-DOCKER_EXIT=0
 docker run --rm $INTERACTIVE_FLAG \
-  --name "walter-$SESSION_ID" \
+  --name "walter-$(date +%s)-$$" \
   --cap-add NET_ADMIN \
   "${MOUNTS[@]}" \
   "${ENV_VARS[@]}" \
@@ -617,9 +560,4 @@ docker run --rm $INTERACTIVE_FLAG \
   --security-opt no-new-privileges \
   "$IMAGE_NAME:$IMAGE_TAG" \
   "${ENTRYPOINT_ARGS[@]}" \
-  "${CLAUDE_ARGS[@]}" || DOCKER_EXIT=$?
-
-# ── Cleanup session directory ────────────────────────────────
-rm -rf "$SESSION_DIR"
-
-exit $DOCKER_EXIT
+  "${CLAUDE_ARGS[@]}"

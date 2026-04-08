@@ -16,7 +16,6 @@ CLAUDE_ARGS_STR="${WALTER_CLAUDE_ARGS_STR:-}"
 SIGNAL_FILE="/tmp/.walter-signal"
 WAVE_FILTER="${WALTER_WAVE:-}"
 PLAN_DIR="${WALTER_PLAN_DIR:-}"
-PROGRESS_FILE="/var/log/walter/progress.jsonl"
 
 # Resolve plan file(s)
 if [ -n "$PLAN_DIR" ]; then
@@ -54,18 +53,6 @@ log() { echo "▸ $*"; }
 log_ok() { echo "  ✓ $*"; }
 log_err() { echo "  ✗ $*" >&2; }
 log_warn() { echo "  ⚠ $*"; }
-
-# Structured progress logging for dashboard
-log_progress() {
-  local ts
-  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  echo "{\"ts\":\"$ts\",$1}" >> "$PROGRESS_FILE" 2>/dev/null || true
-}
-
-# Count total ### Task N: headers in a plan file
-count_total_tasks() {
-  grep -cE '^###[[:space:]]+Task[[:space:]]+[0-9]+' "$1" 2>/dev/null || echo "0"
-}
 
 # extract_plan_context — returns everything before the first ### Task header (capped at 200 lines)
 extract_plan_context() {
@@ -272,11 +259,6 @@ if [ ! -f "$plan_file" ]; then
   return 1
 fi
 
-# Log plan start
-local total_tasks
-total_tasks=$(count_total_tasks "$plan_file")
-log_progress "\"event\":\"plan_start\",\"plan_file\":\"$plan_file\",\"total_tasks\":$total_tasks"
-
 # ── Main loop ───────────────────────────────────────────────
 
 touch /tmp/.walter-session-start
@@ -285,7 +267,6 @@ for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   log "Iteration $iteration/$MAX_ITERATIONS"
-  log_progress "\"event\":\"iteration\",\"iteration\":$iteration,\"plan_file\":\"$plan_file\""
 
   # Find next task with unchecked items (respects WAVE_FILTER if set)
   task_num=$(find_next_task "$plan_file" "$WAVE_FILTER")
@@ -299,7 +280,6 @@ for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
   task_title=$(extract_task_title "$plan_file" "$task_num")
   remaining=$(count_incomplete_tasks "$plan_file")
   log "Task $task_num: $task_title"
-  log_progress "\"event\":\"task_start\",\"task_num\":$task_num,\"task_title\":\"$task_title\",\"remaining\":$remaining,\"plan_file\":\"$plan_file\""
 
   # Check if first unchecked item is [WAIT]
   first_unchecked=$(get_first_unchecked "$plan_file" "$task_num")
@@ -398,7 +378,6 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
       retries=$((retries + 1))
       if [ "$retries" -gt "$RETRY_COUNT" ]; then
         log_err "Task $task_num FAILED after $RETRY_COUNT retries"
-        log_progress "\"event\":\"task_failed\",\"task_num\":$task_num,\"task_title\":\"$task_title\",\"plan_file\":\"$plan_file\""
         return 1
       fi
       log_warn "Task $task_num failed (exit=$exit_code, signal=$signal)"
@@ -409,8 +388,6 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
     if [ "$signal" = "ALL_TASKS_DONE" ]; then
       echo ""
       log_ok "All tasks complete!"
-      log_progress "\"event\":\"task_end\",\"task_num\":$task_num,\"task_title\":\"$task_title\",\"plan_file\":\"$plan_file\""
-      log_progress "\"event\":\"plan_complete\",\"plan_file\":\"$plan_file\""
       echo ""
       return 0
     fi
@@ -423,7 +400,6 @@ IMPORTANT: You MUST output one of the signal strings above before finishing."
   if [ "$task_success" = true ]; then
     remaining=$(count_incomplete_tasks "$plan_file")
     log_ok "Task $task_num done. Remaining unchecked items: $remaining"
-    log_progress "\"event\":\"task_end\",\"task_num\":$task_num,\"task_title\":\"$task_title\",\"remaining\":$remaining,\"plan_file\":\"$plan_file\""
   fi
 
   sleep 2

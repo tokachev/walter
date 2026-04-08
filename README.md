@@ -21,8 +21,6 @@ Claude Code gets full access to files and the terminal. Walter wraps it in a con
 - **Autoresearch** — autonomous iterative improvement loop: each cycle a fresh agent modifies a file, runs an eval, keeps or discards based on a metric
 - **Data Detective** — autonomous agent for investigating data anomalies (BigQuery + Snowflake)
 - **MCP servers** — read-only Snowflake, read/write BigQuery (restricted to a single dataset), Data Detective
-- **Dashboard** — host-side real-time web UI for monitoring all sessions (audit log, progress, cost, plan)
-- **Per-session logs** — audit, progress, cost tracked at `~/.walter/sessions/<id>/`
 - **Auto-memory sharing** — Walter and host Claude Code CLI share the same project memory dir
 
 ## Quick start
@@ -32,7 +30,7 @@ Claude Code gets full access to files and the terminal. Walter wraps it in a con
 git clone <repo-url> walter && cd walter
 
 # 2. Make scripts executable
-chmod +x walter network-lock.sh plan-executor.sh hooks/*.sh hooks/*.py
+chmod +x walter network-lock.sh plan-executor.sh hooks/*.sh hooks/*.py 2>/dev/null || true
 
 # 3. Add auth token
 echo "CLAUDE_CODE_OAUTH_TOKEN=your-token" > .env
@@ -64,10 +62,6 @@ docker build -t walter:latest .
 
 # Plan + code review pipeline
 ./walter --plan my-plan.md --review -d ./my-project
-
-# Real-time dashboard (runs on host, not in container)
-./walter dashboard
-./walter dashboard --port 8080
 
 # Rebuild image
 ./walter --build -d ./my-project
@@ -115,7 +109,6 @@ docker build -t walter:latest .
 │  └───────────────────────────────────────────────┘  │
 │                                                      │
 │  /workspace      ← project dir (rw)                 │
-│  /var/log/walter ← session logs (mounted from host) │
 │  NO: gcloud, aws, ssh, host filesystem              │
 └─────────────────────────────────────────────────────┘
 ```
@@ -124,7 +117,7 @@ docker build -t walter:latest .
 
 ```
 walter/
-├── walter                  # Main launcher (Docker orchestration + dashboard)
+├── walter                  # Main launcher (Docker orchestration)
 ├── network-lock.sh         # Network firewall + MCP registration (entrypoint)
 ├── plan-executor.sh        # Markdown plan executor
 ├── autoresearch.sh         # Iterative improvement loop
@@ -155,10 +148,6 @@ walter/
 │   ├── review-executor.sh
 │   ├── agents/             # implementation, quality, testing, docs, simplification
 │   └── prompts/
-│
-├── dashboard/              # Host-side real-time monitoring UI
-│   ├── server.js           # Node.js HTTP + SSE, watches ~/.walter/sessions/
-│   └── ui.html
 │
 ├── autoresearch/examples/  # generic-metric.sh, pytest-score.sh, sql-time.sh
 │
@@ -193,20 +182,10 @@ DETECTIVE_MODEL=claude-sonnet-4-20250514
 DETECTIVE_MAX_ITER=15
 ```
 
-## Dashboard
-
-```bash
-./walter dashboard
-# Opens http://localhost:19433
-```
-
-Runs on the host (no Docker), tails `~/.walter/sessions/*/` for all active and historical sessions. Three-column layout: session list / log stream / plan + metrics. Auto-discovers new sessions every 2s via SSE.
-
 ## Requirements
 
 - Docker Desktop (macOS / Linux / Windows WSL)
 - Claude Code auth token (OAuth or API key)
-- Node.js (host only, for `walter dashboard`)
 
 ## Troubleshooting
 

@@ -40,14 +40,9 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 COPY hooks/ /opt/hooks/
 RUN chmod +x /opt/hooks/credential-guard.py /opt/hooks/statusline-command.sh
 
-RUN mkdir -p /var/log/walter && chown node:node /var/log/walter
-
 # Plan executor: sequential task runner for markdown plans
 COPY plan-executor.sh /opt/plan-executor.sh
 RUN chmod +x /opt/plan-executor.sh
-
-# Dashboard: real-time web UI for plan execution monitoring
-COPY dashboard/ /opt/dashboard/
 
 # Review executor: post-plan code review
 COPY review/ /opt/review/

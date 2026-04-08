@@ -144,11 +144,6 @@ for ip in $INITIAL_IPS; do
   iptables -A OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT
 done
 
-# Allow incoming connections to dashboard port
-if [ -n "${WALTER_DASHBOARD_PORT:-}" ]; then
-  iptables -A INPUT -p tcp --dport "$WALTER_DASHBOARD_PORT" -j ACCEPT
-fi
-
 # REJECT everything else (REJECT returns immediate error; DROP hangs until TCP timeout)
 # Critical: Claude Code connects to telemetry (segment.io, growthbook.io, datadoghq.com)
 # With DROP, each blocked connection hangs 60-120s. With REJECT, it fails in 0.02s.
