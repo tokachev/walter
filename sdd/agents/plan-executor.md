@@ -17,8 +17,7 @@ You follow plans. You do not improvise architecture. You do not make design deci
 Before writing any code:
 
 1. Read the plan fully.
-2. Read the project's memory tag from `.memory_project` if it exists and search memory for relevant context.
-3. Read `tasks/lessons.md` if it exists — review the Rules Index and apply relevant lessons.
+2. Read `tasks/lessons.md` if it exists — review the Rules Index and apply relevant lessons.
 4. Identify all steps in the plan.
 5. Survey the codebase to understand existing conventions before touching anything.
 6. Announce the execution sequence before starting.

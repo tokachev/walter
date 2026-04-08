@@ -140,19 +140,7 @@ Use these techniques to be thorough:
 
 ## Memory Integration
 
-Update agent memory as you discover architectural patterns, data flows, component relationships, undocumented behaviors, and technical debt.
-
-At the start of each investigation:
-1. Read `.memory_project` to get the project tag
-2. Search memory for prior research on related topics:
-   `python3 ~/memory_tool/memory.py search "<investigation topic>" --project <project_name>`
-3. Check recent findings:
-   `python3 ~/memory_tool/memory.py list --project <project_name> --limit 10`
-
-During investigation, save discoveries automatically:
-- `type=finding`: non-obvious behaviors, undocumented dependencies, surprising patterns
-- `type=context`: architectural understanding, component relationships, schema details
-- `type=todo`: technical debt, missing tests, hardcoded values
+Save non-obvious discoveries to native Claude Code memory as you investigate. Focus on gotchas, undocumented behaviors, architectural decisions with non-obvious "why".
 
 ## Behavioral Guidelines
 

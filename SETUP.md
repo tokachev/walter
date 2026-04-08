@@ -90,11 +90,6 @@ Starts Claude Code interactively inside the container. You can chat, use slash c
 
 Passes the prompt directly to `claude` inside the container.
 
-### With memory tool
-
-```bash
-./walter -m ~/memory_tool -d ./my-project
-```
 
 ### Allow extra domains
 

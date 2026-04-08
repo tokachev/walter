@@ -95,9 +95,6 @@ RUN git config --global user.name "walter" \
     && git config --global user.email "walter@local" \
     && git config --global init.defaultBranch main
 
-# Symlink memory_tool so ~/memory_tool → /opt/memory_tool
-RUN ln -s /opt/memory_tool $HOME/memory_tool
-
 # Give non-root user ownership of its home directory
 RUN chown -R node:node /opt/claude-home
 

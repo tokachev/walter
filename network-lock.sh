@@ -248,26 +248,17 @@ elif [ -f "$HOST_SETTINGS" ]; then
   echo "  ✓ Host settings applied"
 fi
 
-# ── Auto-memory: map to host project path ────────────────────
-# Inside the container the project lives at /workspace, so Claude Code would
-# store auto-memory under ~/.claude/projects/-workspace/memory/.  That key is
-# meaningless on the host.  We redirect it to the host-derived project ID so
-# memory persists across sessions and doesn't collide between parallel Walter
-# instances running different projects.
-if [ -n "${WALTER_HOST_PROJECT_DIR:-}" ]; then
-  HOST_PROJECT_ID=$(echo "$WALTER_HOST_PROJECT_DIR" | sed 's|/|-|g')
-  MEMORY_DIR="$HOME/.claude/projects/${HOST_PROJECT_ID}/memory"
-  mkdir -p "$MEMORY_DIR"
+# ── Auto-memory ──────────────────────────────────────────────
+# Auto-memory uses the native Claude Code path /opt/claude-home/.claude/
+# projects/-workspace/memory/ (derived from WORKDIR=/workspace).  Walter
+# bind-mounts the matching host-side memory directory onto that path, so
+# there is nothing to configure here — Walter and native host CLI sessions
+# share the same memory dir directly.
 
-  CONTAINER_SETTINGS="${CONTAINER_SETTINGS:-$HOME/.claude/settings.json}"
-  if [ -f "$CONTAINER_SETTINGS" ]; then
-    UPDATED=$(jq --arg dir "$MEMORY_DIR" '.autoMemoryDirectory = $dir' "$CONTAINER_SETTINGS" 2>/dev/null) || true
-    [ -n "$UPDATED" ] && echo "$UPDATED" > "$CONTAINER_SETTINGS"
-  else
-    echo "{\"autoMemoryDirectory\": \"$MEMORY_DIR\"}" > "$CONTAINER_SETTINGS"
-  fi
-  echo "  ✓ Auto-memory → $MEMORY_DIR (host: $WALTER_HOST_PROJECT_DIR)"
-fi
+# ── Git safe.directory ───────────────────────────────────────
+# The mounted project is owned by the host UID which differs from the container
+# user.  Git 2.35.2+ refuses to operate without an explicit exception.
+git config --global --add safe.directory /workspace 2>/dev/null || true
 
 # ── MCP servers ──────────────────────────────────────────────
 MCP_ARGS=()
@@ -396,28 +387,6 @@ if [ -f "/opt/detective/mcp_server.py" ]; then
       echo "$ip" >> "$ALLOWED_IPS_FILE"
     done
   fi
-fi
-
-# ── MCP: Memory Tool ─────────────────────────────────────────
-if [ -f "/opt/memory_tool/mcp_server.py" ]; then
-  # Copy Python files to container filesystem for fast imports
-  # (Docker volume mounts on macOS are slow for Python I/O)
-  MEMORY_FAST="/tmp/memory_tool_fast"
-  mkdir -p "$MEMORY_FAST"
-  cp /opt/memory_tool/*.py "$MEMORY_FAST/" 2>/dev/null || true
-  chmod 644 "$MEMORY_FAST/"*.py 2>/dev/null || true
-  python3 -m compileall -q "$MEMORY_FAST/" 2>/dev/null || true
-
-  MCP_JSON=$(echo "$MCP_JSON" | jq \
-    '.mcpServers["memory-tool"] = {
-      "command": "python3",
-      "args": ["/tmp/memory_tool_fast/mcp_server.py"],
-      "env": {
-        "MEMORY_DB_DIR": "/opt/memory_tool/chromadb_data"
-      }
-    }')
-  echo "🔌 MCP: memory-tool (cognitive memory)"
-  echo ""
 fi
 
 # ── Write MCP config if any servers registered ───────────────

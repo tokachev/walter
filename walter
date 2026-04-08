@@ -29,7 +29,6 @@ IMAGE_NAME="walter"
 IMAGE_TAG="latest"
 
 PROJECT_DIR=""
-MEMORY_DIR=""
 EXTRA_DOMAINS=""
 SNOWFLAKE_KEY=""
 BQ_CREDENTIALS=""
@@ -55,7 +54,6 @@ Launches Claude Code inside a Docker container with:
 
 Options:
   -d, --dir <path>         Project directory (default: current dir)
-  -m, --memory <path>      Memory tool directory to mount
   -a, --allow <domains>    Extra domains to allow (comma-separated)
   --snowflake-key <path>   Snowflake private key PEM file
   --bq-credentials <path>  BigQuery service account JSON key file (override)
@@ -87,7 +85,7 @@ Examples:
   walter -d ./my-project                    # all from .env
   walter -d ./my-project "Add auth module"  # with prompt
   walter -d ./my-project -p "Fix bug #42"   # pass -p flag
-  walter -m ~/memory_tool --allow "pypi.org" -d ./project
+  walter --allow "pypi.org" -d ./project
   walter --plan .claude/plans/my-plan.md -d ./project  # execute plan
   walter dashboard                                     # open web dashboard
   walter dashboard --port 8080                         # custom port
@@ -100,7 +98,6 @@ CLAUDE_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -d|--dir)       PROJECT_DIR="$2"; shift 2 ;;
-    -m|--memory)    MEMORY_DIR="$2"; shift 2 ;;
     -a|--allow)     EXTRA_DOMAINS="$2"; shift 2 ;;
     --snowflake-key) SNOWFLAKE_KEY="$2"; shift 2 ;;
     --bq-credentials) BQ_CREDENTIALS="$2"; shift 2 ;;
@@ -154,23 +151,6 @@ MOUNTS=(
   -v "$PROJECT_DIR:/workspace"
 )
 
-# Default memory tool: ~/memory_tool if exists
-MEMORY_DIR="${MEMORY_DIR:-$HOME/memory_tool}"
-if [ -n "$MEMORY_DIR" ] && [ -d "$MEMORY_DIR" ]; then
-  MEMORY_DIR=$(cd "$MEMORY_DIR" && pwd)
-  # Mount selectively: .py files + data dir + semantic layer (read-only)
-  # (avoids mounting the entire 1.5GB+ directory as a single volume)
-  for pyfile in "$MEMORY_DIR"/*.py; do
-    [ -f "$pyfile" ] && MOUNTS+=(-v "$pyfile:/opt/memory_tool/$(basename "$pyfile"):ro")
-  done
-  if [ -d "$MEMORY_DIR/chromadb_data" ]; then
-    MOUNTS+=(-v "$MEMORY_DIR/chromadb_data:/opt/memory_tool/chromadb_data")
-  fi
-  if [ -d "$MEMORY_DIR/semantic_layer" ]; then
-    MOUNTS+=(-v "$MEMORY_DIR/semantic_layer:/opt/memory_tool/semantic_layer:ro")
-  fi
-fi
-
 # ── Mount host's Claude agents + settings ─────────────────────
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 HOST_CLAUDE_AGENTS_MOUNTED=false
@@ -210,7 +190,19 @@ fi
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 PROJECTS_HOST_DIR="$CLAUDE_HOME/projects/-workspace-${PROJECT_NAME}"
 mkdir -p "$PROJECTS_HOST_DIR"
+
 MOUNTS+=(-v "$PROJECTS_HOST_DIR:/opt/claude-home/.claude/projects/-workspace")
+
+# Share auto-memory with native Claude Code CLI sessions on the host.
+# Native Claude Code normalizes the project path to an ID by replacing every
+# non-alphanumeric character with "-". We do the same here so Walter and the
+# host CLI write into the same memory directory. The dir is then bind-mounted
+# into /opt/claude-home/.claude/projects/-workspace/memory — the native path
+# Claude Code uses inside the container (since WORKDIR=/workspace).
+HOST_PROJECT_ID=$(printf '%s' "$PROJECT_DIR" | sed 's|[^a-zA-Z0-9]|-|g')
+HOST_MEMORY_DIR="$CLAUDE_HOME/projects/${HOST_PROJECT_ID}/memory"
+mkdir -p "$HOST_MEMORY_DIR"
+MOUNTS+=(-v "$HOST_MEMORY_DIR:/opt/claude-home/.claude/projects/-workspace/memory")
 
 # ── Safe .env parser ─────────────────────────────────────────
 # Parses KEY=VALUE pairs without shell execution (no source/eval).
@@ -256,6 +248,8 @@ ENV_VARS=(
   -e "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
   # Default to Opus
   -e "ANTHROPIC_MODEL=claude-opus-4-6[1m]"
+  # 24-bit color support inside container
+  -e "COLORTERM=${COLORTERM:-truecolor}"
 )
 
 [ "$HOST_CLAUDE_AGENTS_MOUNTED" = true ] && ENV_VARS+=(-e "WALTER_HOST_AGENTS_MOUNTED=1")
@@ -600,7 +594,6 @@ echo "  Plan:        $PLAN_FILE_REL"
 echo ""
 fi
 echo "  Project:     $PROJECT_DIR"
-echo "  Memory:      ${MEMORY_DIR:-not mounted}"
 echo "  Auth:        $AUTH_METHOD"
 echo ""
 echo "  Network:"
@@ -618,12 +611,6 @@ echo "  Snowflake:"
 echo "     MCP: snowflake-readonly (read-only)"
 echo "     Account: $SNOWFLAKE_ACCOUNT"
 echo "     Key: $SNOWFLAKE_KEY"
-echo ""
-fi
-if [ -n "$MEMORY_DIR" ] && [ -d "$MEMORY_DIR" ]; then
-echo "  Memory Tool:"
-echo "     MCP: memory-tool (cognitive memory)"
-echo "     DB: $MEMORY_DIR/chromadb_data"
 echo ""
 fi
 if [ "$BQ_MCP_ENABLED" = true ]; then
