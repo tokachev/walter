@@ -1,17 +1,16 @@
 # Walter
 
-Docker sandbox for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with network isolation, credential leak protection, cost guardrails, built-in data investigation agent, and a spec-driven development workflow.
+Docker sandbox for running [Claude Code](https://docs.anthropic.com/en/docs/claude-code) with network isolation, credential leak protection, built-in data investigation agent, and a spec-driven development workflow.
 
 ## Why
 
-Claude Code gets full access to files and the terminal. Walter wraps it in a container with four layers of protection:
+Claude Code gets full access to files and the terminal. Walter wraps it in a container with three layers of protection:
 
 | Layer | What it does | Protects against |
 |-------|-------------|-----------------|
 | **Docker** | Filesystem isolation | Access to host credentials (gcloud, aws, ssh) |
 | **iptables** | Only `api.anthropic.com` allowed; IPv6 blocked | Outbound requests (boto3, gcloud SDK, curl, data exfiltration) |
 | **credential-guard** | PreToolUse hook scans 40+ secret patterns | Secrets being written to project files |
-| **guardrails** | Audit log + circuit breaker + cost budget | Runaway sessions, unexpected spend, tool-call floods |
 
 ## Features
 
@@ -66,9 +65,6 @@ docker build -t walter:latest .
 # Plan + code review pipeline
 ./walter --plan my-plan.md --review -d ./my-project
 
-# Raise cost budget (default: $5)
-./walter --cost-budget 20 -d ./my-project
-
 # Real-time dashboard (runs on host, not in container)
 ./walter dashboard
 ./walter dashboard --port 8080
@@ -90,7 +86,6 @@ docker build -t walter:latest .
 | `--plan <file>` | Markdown plan file to execute |
 | `--plan-max-iter <n>` | Max iterations for plan execution (default: 600) |
 | `--plan-retries <n>` | Retry count per task (default: 2) |
-| `--cost-budget <usd>` | Max cost per run in USD (default: 5) |
 | `--review` | Run plan then review |
 | `--review-only` | Skip plan execution; run review only |
 | `--build` | Rebuild Docker image before running |
@@ -110,8 +105,6 @@ docker build -t walter:latest .
 │  ┌─ Claude Code ─────────────────────────────────┐  │
 │  │  PreToolUse hooks:                             │  │
 │  │    credential-guard.py (Write, Edit, Bash)     │  │
-│  │    guardrails/hook.sh → audit + circuit        │  │
-│  │      breaker + cost tracker                    │  │
 │  │                                                │  │
 │  │  MCP servers:                                  │  │
 │  │    snowflake-readonly                          │  │
@@ -143,13 +136,6 @@ walter/
 │   ├── settings.json       # Hook configuration
 │   ├── credential-guard.py # PreToolUse secret scanner (40+ patterns)
 │   └── statusline-command.sh
-│
-├── guardrails/             # Audit + circuit breaker + cost tracker
-│   ├── hook.sh             # PreToolUse entrypoint
-│   ├── hook_check.py
-│   ├── audit.py            # JSONL audit log
-│   ├── circuit_breaker.py  # Blocks tools called >50× in 120s
-│   └── cost_tracker.py     # Blocks when WALTER_COST_BUDGET exceeded
 │
 ├── sdd/                    # Spec-driven development workflow
 │   ├── commands/           # /sdd:new-project, plan-phase, execute-phase, ...
@@ -230,8 +216,6 @@ Runs on the host (no Docker), tails `~/.walter/sessions/*/` for all active and h
 | Claude Code not authorized | Check `CLAUDE_CODE_OAUTH_TOKEN` in `.env` or `ANTHROPIC_API_KEY` |
 | Task stuck | Ctrl+C stops the container; changes are preserved in the project directory |
 | Credential guard false positive | Adjust patterns in `hooks/credential-guard.py` |
-| Cost budget exceeded mid-session | Raise with `--cost-budget 20` or `WALTER_COST_BUDGET` env var |
-| Circuit breaker tripped | Tool called >50× in 120s — inspect `/var/log/walter/audit.jsonl`, tune via `WALTER_CB_THRESHOLD` / `WALTER_CB_WINDOW` |
 
 ## License
 

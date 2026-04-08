@@ -38,7 +38,6 @@ BUILD=false
 PLAN_FILE=""
 PLAN_MAX_ITERATIONS=""
 PLAN_RETRY_COUNT=""
-COST_BUDGET=""
 REVIEW=false
 REVIEW_ONLY=false
 
@@ -62,7 +61,6 @@ Options:
   --plan <file>            Execute a markdown plan file (task-by-task)
   --plan-max-iter <n>      Max iterations for plan execution (default: 600)
   --plan-retries <n>       Retry count per task (default: 2)
-  --cost-budget <usd>      Max cost per run in USD (default: 5)
   --review                 Run plan then review (code review after execution)
   --review-only            Skip plan execution; run review only
   --build                  Rebuild Docker image
@@ -106,7 +104,6 @@ while [[ $# -gt 0 ]]; do
     -p|--plan)      PLAN_FILE="$2"; shift 2 ;;
     --plan-max-iter) PLAN_MAX_ITERATIONS="$2"; shift 2 ;;
     --plan-retries) PLAN_RETRY_COUNT="$2"; shift 2 ;;
-    --cost-budget)  COST_BUDGET="$2"; shift 2 ;;
     --review)       REVIEW=true; shift ;;
     --review-only)  REVIEW_ONLY=true; shift ;;
     --build)        BUILD=true; shift ;;
@@ -504,10 +501,6 @@ fi
 [ "$REVIEW" = true ] && ENV_VARS+=(-e "WALTER_REVIEW=true")
 [ "$REVIEW_ONLY" = true ] && ENV_VARS+=(-e "WALTER_REVIEW_ONLY=true")
 
-# ── Guardrails config ────────────────────────────────────────
-[ -n "$COST_BUDGET" ] && ENV_VARS+=(-e "WALTER_COST_BUDGET=$COST_BUDGET")
-
-
 # ── Session directory (host-side logging for dashboard) ──────
 SESSIONS_DIR="$HOME/.walter/sessions"
 SESSION_ID="$(basename "$PROJECT_DIR")-$(date +%s)"
@@ -522,7 +515,6 @@ cat > "$SESSION_DIR/session.json" << SESEOF
   "project_name": "$(basename "$PROJECT_DIR")",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "plan_file": "${PLAN_FILE_REL:-}",
-  "cost_budget": ${COST_BUDGET:-5},
   "mode": "$([ -n "$PLAN_FILE" ] && echo "plan" || echo "interactive")"
 }
 SESEOF
@@ -604,12 +596,6 @@ echo "  Security:"
 echo "     iptables + ip6tables firewall"
 echo "     credential-guard hooks"
 echo "     no-new-privileges"
-echo ""
-echo "  Guardrails:"
-echo "     audit log (JSONL: /var/log/walter/audit.jsonl)"
-echo "     circuit breaker (threshold: ${WALTER_CB_THRESHOLD:-50} calls/${WALTER_CB_WINDOW:-120}s)"
-echo "     cost budget (\$${COST_BUDGET:-5} per run)"
-echo "     SQL guardrail (blocks DROP, TRUNCATE, DELETE w/o WHERE)"
 echo ""
 echo "  Session: $SESSION_ID"
 echo "     Logs: $SESSION_DIR"

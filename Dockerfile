@@ -40,9 +40,6 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 COPY hooks/ /opt/hooks/
 RUN chmod +x /opt/hooks/credential-guard.py /opt/hooks/statusline-command.sh
 
-# Guardrails: audit log, circuit breaker, cost tracker, SQL guard
-COPY guardrails/ /opt/guardrails/
-RUN chmod +x /opt/guardrails/hook.sh
 RUN mkdir -p /var/log/walter && chown node:node /var/log/walter
 
 # Plan executor: sequential task runner for markdown plans

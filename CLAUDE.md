@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Walter
 
-Docker sandbox for running Claude Code with network isolation (iptables), credential leak protection (PreToolUse hooks), cost guardrails, and built-in agents for data investigation. Everything runs inside a container — no host access to gcloud/aws/ssh.
+Docker sandbox for running Claude Code with network isolation (iptables), credential leak protection (PreToolUse hooks), and built-in agents for data investigation. Everything runs inside a container — no host access to gcloud/aws/ssh.
 
 ## Build and Run
 
@@ -58,16 +58,7 @@ node --check dashboard/server.js
 
 3. **Claude Code** runs inside the container with:
    - **PreToolUse hooks** (`hooks/settings.json` → installed to `$HOME/.claude/settings.json`):
-     - `guardrails/hook.sh` (matcher: `.*`) — audit log + circuit breaker + cost budget check
-     - `hooks/credential-guard.py` (matchers: Write, Edit, Bash) — scans content for 40+ secret patterns
-
-### Guardrails subsystem (`guardrails/`)
-
-All four modules are called on every tool invocation via `hook.sh` → `hook_check.py`:
-- **audit.py** — append-only JSONL log at `/var/log/walter/audit.jsonl`
-- **circuit_breaker.py** — blocks a tool if called >50 times in 120s (configurable via `WALTER_CB_THRESHOLD`, `WALTER_CB_WINDOW`)
-- **cost_tracker.py** — estimates token cost, blocks when `WALTER_COST_BUDGET` (default $5) is exceeded
-- **sql_guard_check.py** (in `detective/`) — bridges to `mcp/sql_utils.py:check_sql_safety()` for detective queries
+     - `hooks/credential-guard.py` (matchers: Write, Edit, Bash) — scans content for 40+ secret patterns in a single Python process
 
 ### MCP servers
 
@@ -124,7 +115,7 @@ Planning flow is dual-model by design:
 ## Key conventions
 
 - **Auth flow**: Walter's own `.env` has `CLAUDE_CODE_OAUTH_TOKEN`. Project credentials (Snowflake, BigQuery, OpenAI) come from the project's `.env` via a safe parser (no `source`/`eval`).
-- **Container paths**: project → `/workspace`, secrets → `/opt/secrets/`, MCP servers → `/opt/mcp/`, hooks → `/opt/hooks/`, guardrails → `/opt/guardrails/`, session logs → `/var/log/walter/` (mounted from `~/.walter/sessions/<id>/`).
-- **Fail-open**: Both credential guard and guardrails fail-open (scanner errors don't block operations).
+- **Container paths**: project → `/workspace`, secrets → `/opt/secrets/`, MCP servers → `/opt/mcp/`, hooks → `/opt/hooks/`, session logs → `/var/log/walter/` (mounted from `~/.walter/sessions/<id>/`).
+- **Fail-open**: The credential guard hook fails open (scanner errors don't block operations).
 - **Plan format**: Must use `### Task N: {title}` headers with `- [ ]` checklist items. Template at `docs/plans/TEMPLATE.md`.
 - **All shell scripts** use `set -e` (or `set -euo pipefail`). The `walter` launcher is the main orchestration entry point — all Docker flags, mounts, and env vars are assembled there.
