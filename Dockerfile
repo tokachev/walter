@@ -12,7 +12,10 @@ RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=3
 
-RUN pip install --break-system-packages chromadb rank_bm25 networkx pytest openpyxl
+RUN pip install --break-system-packages \
+    chromadb rank_bm25 networkx \
+    pytest ruff \
+    openpyxl xlrd xlsxwriter pandas
 
 # MCP server: read-only Snowflake access
 COPY mcp/ /opt/mcp/
