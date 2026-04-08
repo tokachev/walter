@@ -17,7 +17,6 @@ Claude Code gets full access to files and the terminal. Walter wraps it in a con
 
 - **Interactive / prompt modes** — Claude Code inside the sandbox, one-shot or REPL
 - **Plan Executor** — task-by-task execution from a markdown plan, each task in a fresh `claude -p` session
-- **Plannotator** — web UI for reviewing and approving plans on `ExitPlanMode`
 - **Code Review** — 3-phase post-execution review (5 parallel agents → external Codex peer review → final verdict)
 - **SDD** — spec-driven development state machine (`INIT → DISCUSSING → PLANNED → EXECUTING → VERIFYING → PHASE_COMPLETE → ARCHIVED`) with dual-model planning (Claude + Codex)
 - **Autoresearch** — autonomous iterative improvement loop: each cycle a fresh agent modifies a file, runs an eval, keeps or discards based on a metric
@@ -114,9 +113,6 @@ docker build -t walter:latest .
 │  │    guardrails/hook.sh → audit + circuit        │  │
 │  │      breaker + cost tracker                    │  │
 │  │                                                │  │
-│  │  PermissionRequest:                            │  │
-│  │    plannotator (browser UI on ExitPlanMode)    │  │
-│  │                                                │  │
 │  │  MCP servers:                                  │  │
 │  │    snowflake-readonly                          │  │
 │  │    bigquery (read + write to one dataset)     │  │
@@ -173,8 +169,6 @@ walter/
 │   ├── review-executor.sh
 │   ├── agents/             # implementation, quality, testing, docs, simplification
 │   └── prompts/
-│
-├── plannotator/            # Browser UI for plan approval
 │
 ├── dashboard/              # Host-side real-time monitoring UI
 │   ├── server.js           # Node.js HTTP + SSE, watches ~/.walter/sessions/

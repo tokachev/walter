@@ -59,8 +59,7 @@ node --check dashboard/server.js
 3. **Claude Code** runs inside the container with:
    - **PreToolUse hooks** (`hooks/settings.json` → installed to `$HOME/.claude/settings.json`):
      - `guardrails/hook.sh` (matcher: `.*`) — audit log + circuit breaker + cost budget check
-     - `hooks/credential-guard.sh` (matchers: Write, Edit, Bash) — scans content for 40+ secret patterns via `scan-credentials.sh`
-   - **PermissionRequest hook**: upstream `plannotator` binary (v0.13.0) on `ExitPlanMode` — browser-based plan approval UI with themes, diff views, annotations, Mermaid diagrams. Each session gets a dynamic port (base `WALTER_PLANNOTATOR_PORT`, default 19440) published to the host via `-p`.
+     - `hooks/credential-guard.py` (matchers: Write, Edit, Bash) — scans content for 40+ secret patterns
 
 ### Guardrails subsystem (`guardrails/`)
 
@@ -125,7 +124,7 @@ Planning flow is dual-model by design:
 ## Key conventions
 
 - **Auth flow**: Walter's own `.env` has `CLAUDE_CODE_OAUTH_TOKEN`. Project credentials (Snowflake, BigQuery, OpenAI) come from the project's `.env` via a safe parser (no `source`/`eval`).
-- **Container paths**: project → `/workspace`, secrets → `/opt/secrets/`, MCP servers → `/opt/mcp/`, hooks → `/opt/hooks/`, guardrails → `/opt/guardrails/`, plannotator → `/usr/local/bin/plannotator`, session logs → `/var/log/walter/` (mounted from `~/.walter/sessions/<id>/`).
+- **Container paths**: project → `/workspace`, secrets → `/opt/secrets/`, MCP servers → `/opt/mcp/`, hooks → `/opt/hooks/`, guardrails → `/opt/guardrails/`, session logs → `/var/log/walter/` (mounted from `~/.walter/sessions/<id>/`).
 - **Fail-open**: Both credential guard and guardrails fail-open (scanner errors don't block operations).
 - **Plan format**: Must use `### Task N: {title}` headers with `- [ ]` checklist items. Template at `docs/plans/TEMPLATE.md`.
 - **All shell scripts** use `set -e` (or `set -euo pipefail`). The `walter` launcher is the main orchestration entry point — all Docker flags, mounts, and env vars are assembled there.

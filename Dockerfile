@@ -38,21 +38,12 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 
 # Native hooks: credential-guard scanner + hook script
 COPY hooks/ /opt/hooks/
-RUN chmod +x /opt/hooks/credential-guard.py /opt/hooks/review-plan.sh /opt/hooks/statusline-command.sh \
-    && ln -s /opt/hooks/review-plan.sh /usr/local/bin/review-plan
+RUN chmod +x /opt/hooks/credential-guard.py /opt/hooks/statusline-command.sh
 
 # Guardrails: audit log, circuit breaker, cost tracker, SQL guard
 COPY guardrails/ /opt/guardrails/
 RUN chmod +x /opt/guardrails/hook.sh
 RUN mkdir -p /var/log/walter && chown node:node /var/log/walter
-
-# Plannotator: upstream binary for plan review UI (pre-compiled, self-contained)
-ARG PLANNOTATOR_VERSION=0.13.0
-ARG TARGETARCH
-RUN ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") && \
-    curl -fsSL -o /usr/local/bin/plannotator \
-    "https://github.com/backnotprop/plannotator/releases/download/v${PLANNOTATOR_VERSION}/plannotator-linux-${ARCH}" \
-    && chmod +x /usr/local/bin/plannotator
 
 # Plan executor: sequential task runner for markdown plans
 COPY plan-executor.sh /opt/plan-executor.sh

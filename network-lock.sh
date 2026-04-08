@@ -144,10 +144,7 @@ for ip in $INITIAL_IPS; do
   iptables -A OUTPUT -p tcp -d "$ip" --dport 443 -j ACCEPT
 done
 
-# Allow incoming connections to plannotator and dashboard ports
-if [ -n "${PLANNOTATOR_PORT:-}" ]; then
-  iptables -A INPUT -p tcp --dport "$PLANNOTATOR_PORT" -j ACCEPT
-fi
+# Allow incoming connections to dashboard port
 if [ -n "${WALTER_DASHBOARD_PORT:-}" ]; then
   iptables -A INPUT -p tcp --dport "$WALTER_DASHBOARD_PORT" -j ACCEPT
 fi
