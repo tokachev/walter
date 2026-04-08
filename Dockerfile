@@ -78,6 +78,9 @@ COPY commands/ /opt/commands/
 RUN mkdir -p $HOME/.claude/commands \
     && cp /opt/commands/*.md $HOME/.claude/commands/
 
+COPY lib/ /opt/lib/
+RUN chmod +x /opt/lib/*.sh
+
 COPY network-lock.sh /usr/local/bin/network-lock
 RUN chmod +x /usr/local/bin/network-lock
 

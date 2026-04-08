@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Metric: generic numeric metric (higher is better)
 # Eval contract: last line = numeric metric extracted from command output
 # Accepts command and all its arguments as "$@", executes it, finds the last
 # line matching a number (integer or float, possibly negative), echoes it.

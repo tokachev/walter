@@ -72,6 +72,13 @@ if [ ! -f "$RESULTS_FILE" ]; then
   printf 'iteration\tmetric\tdescription\tstatus\ttimestamp\n' > "$RESULTS_FILE"
 fi
 
+# ── Parse metric direction from eval script ─────────────────
+# Supports: # Metric: <name> (higher is better) or (lower is better)
+EVAL_SCRIPT=$(echo "$EVAL_COMMAND" | awk '{print $1}')
+METRIC_DIRECTION=$(parse_metric_direction "$EVAL_SCRIPT")
+export METRIC_DIRECTION
+log "Metric direction: $METRIC_DIRECTION"
+
 # ── Baseline run ────────────────────────────────────────────
 log "Running baseline eval..."
 BASELINE_METRIC=$(run_eval "$EVAL_COMMAND")
@@ -121,6 +128,7 @@ for ((iteration=1; ; iteration++)); do
     -e "s|{{EVAL_COMMAND}}|$EVAL_COMMAND|g" \
     -e "s|{{RESULTS_TSV}}|$RESULTS_FILE|g" \
     -e "s|{{BASELINE_METRIC}}|$BASELINE_METRIC|g" \
+    -e "s|{{METRIC_DIRECTION}}|$METRIC_DIRECTION|g" \
     "$SCRIPT_DIR/autoresearch-program.md")
 
   # Run claude and scan output for signals
@@ -176,8 +184,12 @@ total_iterations=$((iteration - 1))
 kept_count=$(tail -n +2 "$RESULTS_FILE" | grep -c $'\tkeep\t' 2>/dev/null || echo "0")
 discarded_count=$(tail -n +2 "$RESULTS_FILE" | grep -c $'\tdiscard\t' 2>/dev/null || echo "0")
 
-# Best metric: numeric sort on column 2 (ascending = lowest is best; use tail for highest)
-best_metric=$(tail -n +2 "$RESULTS_FILE" | awk -F'\t' '{print $2}' | sort -n | tail -1 2>/dev/null || echo "$BASELINE_METRIC")
+# Best metric: direction-aware sort on column 2
+if [ "$METRIC_DIRECTION" = "higher" ]; then
+  best_metric=$(tail -n +2 "$RESULTS_FILE" | awk -F'\t' '{print $2}' | sort -n | tail -1 2>/dev/null || echo "$BASELINE_METRIC")
+else
+  best_metric=$(tail -n +2 "$RESULTS_FILE" | awk -F'\t' '{print $2}' | sort -n | head -1 2>/dev/null || echo "$BASELINE_METRIC")
+fi
 
 echo "  Total iterations: $total_iterations"
 echo "  Kept:             $kept_count"

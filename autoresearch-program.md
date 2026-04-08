@@ -47,7 +47,9 @@ Capture the final numeric output. This is your iteration metric.
 
 Compare the iteration metric to the baseline (`{{BASELINE_METRIC}}`).
 
-- If the metric is **better** than baseline (higher or lower depending on what "better" means for this eval — judge from the history trend): output `<<<AUTORESEARCH:IMPROVED>>>` as the very last line of your response. Nothing after it.
+For this run, **{{METRIC_DIRECTION}} values are better**. A result is an improvement if it is strictly {{METRIC_DIRECTION}} than the baseline.
+
+- If the metric is **better** than baseline: output `<<<AUTORESEARCH:IMPROVED>>>` as the very last line of your response. Nothing after it.
 - If the metric is **not better**: output `<<<AUTORESEARCH:NO_IMPROVEMENT>>>` as the very last line of your response. Nothing after it.
 
 ## Rules

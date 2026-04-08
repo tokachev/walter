@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dev deps
+        run: pip install -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Shell syntax check
+        run: |
+          bash -n walter \
+            network-lock.sh \
+            plan-executor.sh \
+            autoresearch.sh \
+            autoresearch-lib.sh \
+            review/review-executor.sh \
+            hooks/lib/safe-load-env.sh
+      - name: Shellcheck
+        run: |
+          shellcheck walter \
+            network-lock.sh \
+            plan-executor.sh \
+            autoresearch.sh \
+            autoresearch-lib.sh \
+            review/review-executor.sh \
+            hooks/lib/safe-load-env.sh
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r mcp/requirements.txt
+          pip install -r detective/requirements.txt
+      - name: Pytest
+        run: pytest tests/ -v
+
+  docs-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No references to SETUP.md
+        run: |
+          if grep -rn 'SETUP\.md' --include='*.md' .; then
+            echo "ERROR: Found references to removed SETUP.md"
+            exit 1
+          fi
+      - name: No references to removed scripts/subsystems
+        run: |
+          if grep -rn 'credential-guard\.sh\|scan-credentials\.sh\|duplicate-checker\|inject-temporal-context\|memory-project-validator' \
+               --include='*.md' --include='*.sh' --include='Dockerfile' .; then
+            echo "ERROR: Found references to removed files/subsystems"
+            exit 1
+          fi

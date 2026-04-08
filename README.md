@@ -9,7 +9,7 @@ Claude Code gets full access to files and the terminal. Walter wraps it in a con
 | Layer | What it does | Protects against |
 |-------|-------------|-----------------|
 | **Docker** | Filesystem isolation | Access to host credentials (gcloud, aws, ssh) |
-| **iptables** | Only `api.anthropic.com` allowed; IPv6 blocked | Outbound requests (boto3, gcloud SDK, curl, data exfiltration) |
+| **iptables** | Only `api.anthropic.com`, `console.anthropic.com`, `claude.ai` allowed; IPv6 blocked (`console.anthropic.com` and `claude.ai` are required for OAuth login redirect) | Outbound requests (boto3, gcloud SDK, curl, data exfiltration) |
 | **credential-guard** | PreToolUse hook scans 40+ secret patterns | Secrets being written to project files |
 
 ## Features
@@ -22,6 +22,12 @@ Claude Code gets full access to files and the terminal. Walter wraps it in a con
 - **Data Detective** — autonomous agent for investigating data anomalies (BigQuery + Snowflake)
 - **MCP servers** — read-only Snowflake, read/write BigQuery (restricted to a single dataset), Data Detective
 - **Auto-memory sharing** — Walter and host Claude Code CLI share the same project memory dir
+
+## Prerequisites
+
+- Docker Desktop (recent version) — macOS, Linux, or Windows with WSL2
+- WSL2 required on Windows (Docker Desktop uses it automatically)
+- Claude Code auth token (OAuth or API key) — get it from [claude.ai/code](https://claude.ai/code)
 
 ## Quick start
 
@@ -91,7 +97,9 @@ docker build -t walter:latest .
 │  Docker container                                    │
 │                                                      │
 │  ┌─ network-lock.sh (entrypoint) ────────────────┐  │
-│  │ iptables: ALLOW api.anthropic.com:443         │  │
+│  │ iptables: ALLOW api.anthropic.com:443          │  │
+│  │           console.anthropic.com:443           │  │
+│  │           claude.ai:443 (OAuth redirect)      │  │
 │  │ ip6tables: DROP ALL                            │  │
 │  │ Background DNS refresh every 5 min            │  │
 │  └───────────────────────────────────────────────┘  │

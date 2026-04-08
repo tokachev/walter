@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Metric: pytest pass rate 0-100 (higher is better)
 # Eval contract: last line = pass rate 0-100 (integer, higher is better)
 # Usage: pytest-score.sh [pytest args...]
 # Example: pytest-score.sh tests/ -k "not slow"

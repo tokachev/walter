@@ -35,6 +35,27 @@ log_result() {
     >> "$RESULTS_FILE"
 }
 
+# parse_metric_direction — read first 20 lines of eval script for direction comment
+# Usage: direction=$(parse_metric_direction "/path/to/eval.sh")
+# Looks for: # Metric: <name> (higher is better) or (lower is better)
+# Returns: "higher" or "lower". Defaults to "higher" if not found.
+parse_metric_direction() {
+  local eval_script="$1"
+  if [ ! -f "$eval_script" ]; then
+    echo "higher"
+    return 0
+  fi
+  local direction
+  direction=$(head -20 "$eval_script" \
+    | grep -oP '(?<=\()higher|lower(?= is better\))' \
+    | head -1 || true)
+  if [ "$direction" = "lower" ]; then
+    echo "lower"
+  else
+    echo "higher"
+  fi
+}
+
 # run_eval — execute eval command, capture last numeric line of stdout as metric
 # Usage: metric=$(run_eval "bash /workspace/sandbox/eval.sh")
 # Exits 0 on success; exits non-zero if no numeric line found.

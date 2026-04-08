@@ -35,11 +35,11 @@ def check_sql_safety(sql: str) -> str | None:
     if len(segments) > 1:
         return "SQL guardrail: multi-statement queries are blocked"
 
-    # Allowlist: only SELECT / WITH queries pass
+    # Allowlist: read-only query types per spec (SELECT/WITH/SHOW/DESCRIBE/DESC/EXPLAIN)
     first_keyword = normalized.split()[0] if normalized.split() else ""
-    if first_keyword not in ("select", "with"):
+    if first_keyword not in ("select", "with", "show", "describe", "desc", "explain"):
         return (
-            f"SQL guardrail: only SELECT/WITH queries are allowed. "
+            f"SQL guardrail: only SELECT/WITH/SHOW/DESCRIBE/EXPLAIN queries are allowed. "
             f"Got: {first_keyword.upper()}"
         )
 

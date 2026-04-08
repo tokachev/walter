@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Metric: elapsed seconds (lower is better)
 # Eval contract: last line = elapsed seconds (integer, lower is better)
 # Usage: sql-time.sh <path-to-sql-file>
 set -euo pipefail

@@ -176,40 +176,9 @@ mkdir -p "$HOST_MEMORY_DIR"
 MOUNTS+=(-v "$HOST_MEMORY_DIR:/opt/claude-home/.claude/projects/-workspace/memory")
 
 # ── Safe .env parser ─────────────────────────────────────────
-# Parses KEY=VALUE pairs without shell execution (no source/eval).
-# Handles: empty lines, comments, export prefix, single/double quotes,
-# inline comments on unquoted values. Malicious payloads ($(...), `...`)
-# are kept as literal strings and never executed.
-safe_load_env() {
-  local env_file="$1"
-  [ -f "$env_file" ] || return 0
-  while IFS= read -r line || [ -n "$line" ]; do
-    # Skip empty lines and comment lines
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    # Strip leading whitespace and optional 'export ' prefix
-    line="${line#"${line%%[![:space:]]*}"}"
-    line="${line#export }"
-    # Must match KEY=... (KEY: alphanumeric + underscore, starting with letter/underscore)
-    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*) ]] || continue
-    local key="${BASH_REMATCH[1]}"
-    local val="${BASH_REMATCH[2]}"
-    # Double-quoted value: strip quotes, no inline-comment stripping
-    if [[ "$val" =~ ^\"(.*) ]]; then
-      val="${val#\"}"
-      val="${val%\"}"
-    # Single-quoted value: strip quotes, no inline-comment stripping
-    elif [[ "$val" =~ ^\'(.*) ]]; then
-      val="${val#\'}"
-      val="${val%\'}"
-    else
-      # Unquoted: strip inline comment (space + # + anything)
-      val="${val%% #*}"
-      # Trim trailing whitespace
-      val="${val%"${val##*[![:space:]]}"}"
-    fi
-    export "$key=$val"
-  done < "$env_file"
-}
+# Extracted to hooks/lib/safe-load-env.sh for reuse and testability.
+# shellcheck source=hooks/lib/safe-load-env.sh
+source "$SCRIPT_DIR/hooks/lib/safe-load-env.sh"
 
 # ── Auth (from walter .env) ───────────────────────────────────
 ENV_VARS=(
@@ -229,11 +198,7 @@ ENV_VARS=(
 # Pass host project path so container can map auto-memory to the correct project ID
 ENV_VARS+=(-e "WALTER_HOST_PROJECT_DIR=$PROJECT_DIR")
 
-if [ -f "$SCRIPT_DIR/.env" ]; then
-  set -a
-  source "$SCRIPT_DIR/.env"
-  set +a
-fi
+safe_load_env "$SCRIPT_DIR/.env" "CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY"
 
 if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
   ENV_VARS+=(-e "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN")
