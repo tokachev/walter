@@ -13,3 +13,6 @@ __pycache__/
 .claude/agent-memory/
 .claude/projects/
 .planning/
+
+# Scratch / temporary files
+sandbox/

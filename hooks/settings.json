@@ -3,34 +3,54 @@
     "type": "command",
     "command": "bash /opt/hooks/statusline-command.sh"
   },
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Being the one who codes",
+      "Saying my name",
+      "Cooking the purest code",
+      "Knocking on the door",
+      "Breaking bad habits in the codebase",
+      "Applying chemistry to the problem",
+      "Building an empire",
+      "Hiding in plain sight",
+      "Making it 99.1 percent pure",
+      "Tread-lightly-ing through the code",
+      "Watching from the car wash",
+      "Measuring with precision",
+      "Eliminating the competition",
+      "Staying two steps ahead",
+      "Running the operation",
+      "Calculating the yield",
+      "Wearing the Heisenberg hat",
+      "Dissolving the evidence",
+      "Going full Heisenberg",
+      "Respecting the chemistry",
+      "Operating out of the RV",
+      "Stacking the barrels",
+      "Watching the fly in the lab",
+      "Making an offer they can't refuse",
+      "Expanding the territory",
+      "Calling Saul",
+      "Checking the purity levels",
+      "Going off the grid",
+      "Leaving no trace",
+      "Handling the distribution",
+      "Maintaining the cover story",
+      "Adjusting the formula",
+      "Dealing with the half measures",
+      "Choosing the full measure",
+      "Winning (at any cost)"
+    ]
+  },
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/opt/hooks/inject-temporal-context.sh"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/opt/guardrails/hook.sh",
-            "statusMessage": "Guardrails check..."
-          }
-        ]
-      },
       {
         "matcher": "Write",
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/hooks/credential-guard.sh write",
+            "command": "/opt/hooks/credential-guard.py write",
             "statusMessage": "Scanning for credentials..."
           }
         ]
@@ -40,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/hooks/credential-guard.sh edit",
+            "command": "/opt/hooks/credential-guard.py edit",
             "statusMessage": "Scanning for credentials..."
           }
         ]
@@ -50,43 +70,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/hooks/credential-guard.sh bash",
+            "command": "/opt/hooks/credential-guard.py bash",
             "statusMessage": "Scanning for credentials..."
-          },
-          {
-            "type": "command",
-            "command": "/opt/hooks/memory-project-validator.sh",
-            "statusMessage": "Checking memory project..."
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/opt/hooks/large-file-guard.sh",
-            "statusMessage": "Checking file size..."
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/opt/hooks/duplicate-checker.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/opt/hooks/duplicate-checker.sh"
           }
         ]
       }
