@@ -29,7 +29,7 @@ if [ -n "$PLAN_DIR" ]; then
     [ -f "$f" ] && PLAN_FILES+=("$f")
   done
   # Deduplicate and sort
-  PLAN_FILES=($(printf '%s\n' "${PLAN_FILES[@]}" | sort -u))
+  mapfile -t PLAN_FILES < <(printf '%s\n' "${PLAN_FILES[@]}" | sort -u)
   if [ ${#PLAN_FILES[@]} -eq 0 ]; then
     echo "ERROR: No plan files found in $PLAN_DIR" >&2
     exit 1
@@ -220,22 +220,6 @@ get_first_unchecked() {
 }
 
 
-# ── Wave filter helper ──────────────────────────────────────
-
-# filter_tasks_by_wave — if WAVE_FILTER is set, only process tasks in that wave.
-# Wave = comma-separated task numbers. E.g., WALTER_WAVE="1,2,3"
-is_task_in_wave() {
-  local task_num="$1"
-  if [ -z "$WAVE_FILTER" ]; then
-    return 0  # no filter = all tasks
-  fi
-  IFS=',' read -ra WAVE_TASKS <<< "$WAVE_FILTER"
-  for wt in "${WAVE_TASKS[@]}"; do
-    [ "$wt" = "$task_num" ] && return 0
-  done
-  return 1
-}
-
 # ── Execute single plan file ──────────────────────────────────
 
 execute_plan() {
@@ -300,7 +284,7 @@ for ((iteration=1; iteration<=MAX_ITERATIONS; iteration++)); do
 
     # Mark [WAIT] → [x] in plan file
     wait_pattern=$(echo "$first_unchecked" | sed 's/[][\/.^$*]/\\&/g' | sed 's/\[WAIT\]/\\[WAIT\\]/')
-    wait_replacement=$(echo "$first_unchecked" | sed 's/\[WAIT\]/[x]/')
+    wait_replacement="${first_unchecked//\[WAIT\]/[x]}"
     wait_replacement_escaped=$(echo "$wait_replacement" | sed 's/[&/\]/\\&/g')
     sed -i "s/${wait_pattern}/${wait_replacement_escaped}/" "$plan_file"
     log_ok "Marked WAIT step as done"

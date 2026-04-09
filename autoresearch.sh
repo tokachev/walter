@@ -30,6 +30,7 @@ RESULTS_FILE="results.tsv"
 SHUTDOWN=false
 
 # ── Signal handling ─────────────────────────────────────────
+# shellcheck disable=SC2317,SC2329  # cleanup is invoked via trap
 cleanup() {
   SHUTDOWN=true
 }
@@ -133,7 +134,6 @@ for ((iteration=1; ; iteration++)); do
 
   # Run claude and scan output for signals
   signal_detected=""
-  detected_metric="$CURRENT_METRIC"
 
   while IFS= read -r line; do
     echo "$line"
