@@ -9,14 +9,15 @@ Usage:
   BQ_MCP_TEST_CONFIG=/path/to/config.json python3 mcp/bigquery/test_smoke.py
 """
 
+import json
 import os
 import sys
 
 # 1. Verify imports
 print("Checking imports...", end=" ")
 try:
-    from mcp.server.fastmcp import FastMCP
-    from google.cloud import bigquery
+    from mcp.server.fastmcp import FastMCP  # noqa: F401  (availability probe)
+    from google.cloud import bigquery  # noqa: F401  (availability probe)
     print("OK")
 except ImportError as e:
     print(f"FAILED: {e}")
@@ -44,7 +45,6 @@ assert result and "error" not in result.lower(), f"Failed: {result}"
 print("OK")
 
 # 5. Test list_datasets with first project from config
-import json
 config = json.loads(open(config_path).read())
 project_id = config.get("write_dataset", {}).get("project_id")
 if project_id:

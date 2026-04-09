@@ -10,8 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 # ── Load the module ────────────────────────────────────────────────────────────
 
 _HOOK_PATH = Path(__file__).parent.parent / "hooks" / "credential-guard.py"

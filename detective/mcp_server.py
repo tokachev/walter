@@ -14,9 +14,7 @@ Usage in Claude Code:
 
 import sys
 import os
-import json
 import asyncio
-import traceback
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +24,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
-import mcp.server.stdio
-import mcp.types as types
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationOptions
+import mcp.server.stdio  # noqa: E402
+import mcp.types as types  # noqa: E402
+from mcp.server import Server, NotificationOptions  # noqa: E402
+from mcp.server.models import InitializationOptions  # noqa: E402
 
 # ─── Server initialization ───────────────────────────────────────────────────
 

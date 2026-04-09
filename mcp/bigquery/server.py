@@ -22,7 +22,6 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any
 
 from google.cloud import bigquery
 from google.oauth2 import service_account
