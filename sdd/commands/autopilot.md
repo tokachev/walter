@@ -30,28 +30,10 @@ Ask the user these questions (skip any answered in $ARGUMENTS):
 If working with existing code, spawn codebase-researcher:
 
 ```
-Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to the requested project. Write findings to .claude/research/sdd-codebase-overview-claude.md")
+Agent(subagent_type="codebase-researcher", prompt="Research the codebase at /workspace for: project structure, tech stack, key patterns and conventions, areas relevant to the requested project. Write findings to .claude/research/sdd-codebase-overview.md")
 ```
 
-Run Codex in parallel — execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode:
-
-```bash
-mkdir -p .claude/research
-codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/sdd-codebase-overview-codex.md
-Analyze this codebase for the requested project setup. Document:
-
-1. Project structure and entry points
-2. Tech stack and key dependencies
-3. Established implementation patterns and constraints
-4. Risks or integration hotspots relevant to the requested work
-
-Output structured markdown with concrete file references.
-CODEX_EOF
-```
-
-Merge both into `.claude/research/sdd-codebase-overview.md` before writing `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md`.
-
-If Codex is unavailable, continue with Claude-only research but say so explicitly.
+Use the research findings to write `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md`.
 
 Create `.planning/` structure: `PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`, `REQUIREMENTS-CHANGELOG.md`.
 
@@ -68,58 +50,45 @@ Delta specs are merged into REQUIREMENTS.md via `/sdd:sync-specs`.
 
 Present the roadmap with all phases to the user for confirmation before proceeding.
 
-## Step 3: Plan Each Phase Interactively
+## Step 3: Plan All Phases
 
-For each phase in `ROADMAP.md`, do the following **interactively** (do NOT skip discussions):
+Planning is split into 4 sub-steps. **Exploration and planning run in parallel across all phases** (background agents). **Discussion and review remain sequential per phase** (user input required between).
 
-### 3a. Explore Phase
+### 3a. Explore All Phases (parallel)
 
-Before asking the user anything, launch an Explore subagent to analyze the codebase relevant to this phase.
+Spawn one `Explore` subagent **per phase** in parallel using `run_in_background=true`. All exploration runs concurrently — wall time is bounded by the slowest phase, not the sum.
 
-The agent should investigate:
-- Existing patterns and conventions in code areas this phase will touch
-- Files that will likely be affected (list with paths)
-- Dependencies and interconnections between affected components
-- Test coverage for the affected areas (existing tests, test patterns used)
-- If this phase is SQL-heavy, note that validation queries replace unit tests
+For each phase N in `ROADMAP.md`:
 
 ```
-Agent(subagent_type="Explore", prompt="Analyze the codebase areas relevant to Phase {N}: {phase description}. Investigate: existing patterns and conventions, files that will be affected, dependencies between components, test coverage. Be specific with file paths and line numbers.")
+Agent(
+  subagent_type="Explore",
+  run_in_background=true,
+  prompt="Analyze the codebase areas relevant to Phase {N}: {phase description}. Investigate: existing patterns and conventions, files that will be affected, dependencies between components, test coverage. If this phase is SQL-heavy, note that validation queries replace unit tests. Be specific with file paths and line numbers. Write findings to .planning/phases/phase-{N}-EXPLORE.md."
+)
 ```
 
-Write findings to `.planning/phases/phase-{N}-EXPLORE.md`.
+**Wait for ALL background Explore agents to complete** before proceeding to 3b. Do not start discussion until every phase's `EXPLORE.md` exists.
 
-Present a **3-5 bullet summary** of key findings to the user before proceeding to discussion.
+### 3b. Discuss Each Phase (sequential)
 
-### 3b. Discuss Phase
+For each phase in `ROADMAP.md`, sequentially:
 
-**CRITICAL**: Ask ONE question at a time using AskFollowupQuestion. Wait for the user's response before asking the next question. Do NOT batch multiple questions into a single message.
+1. Read `.planning/phases/phase-{N}-EXPLORE.md` and present a **3-5 bullet summary** of key findings.
+2. Ask the 3 questions below via `AskFollowupQuestion` — **one at a time, wait for each response** before asking the next. Do NOT batch them.
 
-#### Question 1: Scope
-Present the phase scope from the roadmap and exploration findings, then ask:
-> "Here's what this phase covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
+   **Q1 — Scope**: "Here's what Phase {N} covers: {summary}. Does this scope look right, or do you want to add/remove anything?"
 
-Wait for response.
+   **Q2 — Approach**: Present 2-3 implementation approaches with trade-offs (lead with the recommended one). Skip this question if the approach is obvious or the user already specified it.
 
-#### Question 2: Implementation Approach
-Propose **2-3 implementation approaches** with trade-offs. Lead with the recommended option. Present as a numbered list via AskFollowupQuestion.
+   **Q3 — Key decisions**: Based on the chosen approach, present specific technical decisions that need to be made.
 
-**Skip this step** if the approach is obvious (only one reasonable way) or the user already specified it.
-
-Wait for response.
-
-#### Question 3: Key Decisions
-Based on the chosen approach, present specific technical decisions that need to be made. If the decision is open-ended, ask free-form.
-
-Wait for response.
-
-Capture all decisions in `.planning/phases/phase-{N}-CONTEXT.md`:
+3. Capture all decisions in `.planning/phases/phase-{N}-CONTEXT.md`:
 
 ```markdown
 # Phase {N} Context: {phase name}
 
 ## Exploration Summary
-{Key findings from Step 3a — link to full explore doc}
 See: `.planning/phases/phase-{N}-EXPLORE.md`
 
 ## Approach
@@ -136,88 +105,51 @@ See: `.planning/phases/phase-{N}-EXPLORE.md`
 - {anything unresolved — to be addressed during planning}
 ```
 
-### 3c. Research (if needed)
+After every phase has its `CONTEXT.md`, proceed to 3c.
 
-If the phase touches existing code, run Claude + Codex research in parallel:
+### 3c. Plan All Phases (parallel)
+
+Spawn one `walter-planner` agent **per phase** in parallel using `run_in_background=true`. Single-model planning — no codex, no plan-coordinator. Wall time is bounded by the slowest phase.
+
+For each phase N in `ROADMAP.md`:
 
 ```
-Agent(subagent_type="codebase-researcher", run_in_background=true, prompt="Research areas of the codebase relevant to Phase {N}: {phase description}. Focus on: {specific areas from context}. Write findings to .claude/research/phase-{N}-research-claude.md")
-```
-
-Execute the following command using the Bash tool. First verify codex is available with `command -v codex`. If codex is not found, skip and note degraded mode:
-
-```bash
-mkdir -p .claude/research
-codex exec -s danger-full-access <<'CODEX_EOF' 2>&1 | tee .claude/research/phase-{N}-research-codex.md
-Research the codebase for Phase {N}: {phase description}.
+Agent(
+  subagent_type="walter-planner",
+  run_in_background=true,
+  prompt="Create an execution plan for Phase {N}: {phase description}.
 
 Context:
-- Requirements: {paste key requirements for this phase}
-- Decisions: {paste key decisions from phase-{N}-CONTEXT.md}
+- Requirements (relevant slice of .planning/REQUIREMENTS.md): {paste phase-relevant requirements}
+- Decisions: {paste full content of .planning/phases/phase-{N}-CONTEXT.md}
+- Exploration findings: {paste full content of .planning/phases/phase-{N}-EXPLORE.md}
 
-Focus on relevant files, existing patterns, integration points, likely conflicts, and validation strategy.
-Output structured markdown with concrete file references.
-CODEX_EOF
+Write the plan to .planning/phases/phase-{N}-PLAN.md.
+
+Format requirements (strict):
+- Use `### Task N:` headers
+- Use `- [ ]` checklist items and `- [WAIT]` for manual gates
+- Max 10 tasks per plan
+- 3-7 items per task
+- Include `## Validation Commands` section
+- Reference concrete file paths
+- Tasks must be self-contained: each runs in an isolated session with no shared state, so never use phrases like 'as above' or 'continue from Task N'
+"
+)
 ```
 
-Merge both into `.claude/research/phase-{N}-research.md` with:
-- shared findings
-- Claude-only insights
-- Codex-only insights
-- contradictions / open questions
-- planning implications
+**Wait for ALL background walter-planner agents to complete** before proceeding to 3d.
 
-If Codex is unavailable, continue with Claude-only research but explicitly mark degraded mode.
+### 3d. Review Each Plan (sequential)
 
-### 3d. Create Phase Plan
-
-Spawn `plan-coordinator` so the final phase plan is synthesized from two independent plan drafts:
-
-```
-Agent(subagent_type="plan-coordinator", prompt="
-PHASE_NUMBER: {N}
-PHASE_DESCRIPTION: {phase description}
-OUTPUT_PATH: .planning/phases/phase-{N}-PLAN.md
-
-REQUIREMENTS:
-{paste full requirements for this phase}
-
-DECISIONS:
-{paste full content of phase-{N}-CONTEXT.md}
-
-RESEARCH:
-{paste key findings from .claude/research/phase-{N}-research.md}
-")
-```
-
-### 3e. Validate Plan
-
-Spawn qa-validator to check the plan before presenting to the user:
-
-```
-Agent(subagent_type="qa-validator", prompt="Review the plan at .planning/phases/phase-{N}-PLAN.md against .planning/REQUIREMENTS.md. Check:
-1. All requirements for this phase are covered
-2. Tasks are in logical order with correct dependencies
-3. Validation commands are present and meaningful
-4. No gaps or ambiguities in the steps
-Report any issues found.")
-```
-
-If qa-validator reports issues, fix the plan before proceeding.
-
-### 3f. Review Plan with User
-
-Present the created plan to the user along with:
-- **qa-validator findings** (issues found and how they were resolved, or confirmation that plan passed)
-- **Agent Notes** section so the user can see where Claude and Codex converged or diverged
+For each phase plan in order, present to the user:
+- Plan title and task count
+- 1-line summary of each task
 
 Ask:
-- Does this plan look right?
-- Any tasks to add/remove/modify?
+- "Phase {N} plan: does this look right? Any tasks to add/remove/modify?"
 
-Apply any changes before moving to the next phase.
-
-**Repeat 3a-3f for every phase in the roadmap.**
+Apply any changes before moving to the next phase's review. The single combined `qa-validator` pass in Step 6 covers full requirement validation after execution — no per-phase qa-validator here.
 
 ## Step 4: Export Combined Plan
 
@@ -241,7 +173,7 @@ After ALL phases are planned:
 {Should-have requirements from REQUIREMENTS.md}
 
 ## Codebase Notes
-{Key findings from research — file paths, patterns, conventions, integration points}
+{Aggregated key findings from `.planning/phases/phase-*-EXPLORE.md` — file paths, patterns, conventions, integration points}
 
 ---
 
@@ -287,6 +219,7 @@ pytest tests/ -x -q
 3. Update `.planning/STATE.md`:
    - State: EXPORTED
    - Plans: autopilot-PLAN.md
+   - Progress: 0/{N} tasks complete  (where {N} is the count of `### Task ` headers in the exported file)
 
 ## Step 5: Execute Plan
 
@@ -317,15 +250,22 @@ You are executing a single task from a larger plan.
 ## Validation Commands
 {validation commands section}
 
-Execute this task precisely. Mark items as [x] when done. Run validation commands after completion.
+Execute this task precisely. Run validation commands after completion.
+Do not modify .planning/autopilot-PLAN.md — the parent process will mark progress.
 If blocked, report the blocker — do not guess or skip.
 ")
 ```
 
 After each agent completes:
 - Check the agent's result for blockers or failures
-- If a task failed, stop execution and report to the user — do NOT proceed to the next task
-- If successful, continue to the next task
+- If a task failed, stop execution and report to the user — do NOT proceed to the next task and do NOT mark the task as done
+- If successful, mark progress in the plan file:
+  1. Read `.planning/autopilot-PLAN.md`
+  2. Locate the section `### Task {N}: {title}` — its content runs from the header to the next `### Task ` header (or to `---` / EOF if it is the last task)
+  3. In that section only, replace every `- [ ]` with `- [x]`. Leave any `- [WAIT]` items untouched
+  4. Use a single Edit call with the full task section as `old_string` and the updated section as `new_string` (the section is unique because of its task number, so the Edit will not collide)
+  5. Update `.planning/STATE.md`: bump the `- Progress: {done}/{total} tasks complete` line and refresh `Updated:` to the current ISO timestamp
+- Continue to the next task
 
 Update `.planning/STATE.md` to `State: EXECUTING` at the start of this step.
 
