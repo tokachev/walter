@@ -15,8 +15,7 @@ The agent should investigate:
 - Existing patterns and conventions in code areas this phase will touch
 - Files that will likely be affected (list with paths)
 - Dependencies and interconnections between affected components
-- Test coverage for the affected areas (existing tests, test patterns used)
-- If this phase is SQL-heavy (queries, views, stored procedures, pipeline logic, transformations), note that **validation queries replace unit tests** — flag this for planning
+- Existing test/validation patterns, if any — so the plan can match them when relevant
 
 Write the full findings to `.planning/phases/phase-{N}-EXPLORE.md`.
 
@@ -61,13 +60,7 @@ Wait for response.
 
 Wait for response.
 
-### Question 5: Testing Preference
-Ask via AskFollowupQuestion with these options:
-1. TDD (tests first)
-2. Regular (code first, then tests)
-3. Validation queries only (SQL-heavy phase)
-
-Wait for response. Store the preference in the context file.
+If the phase clearly benefits from a specific testing or validation approach (e.g., user explicitly asks for TDD, or the scope is risky enough to warrant dedicated checks), raise it as a follow-up question. Otherwise do not ask about tests — let the planner decide what validation, if any, the plan should include.
 
 If $ARGUMENTS contains specific topics, focus on those and skip irrelevant questions.
 
@@ -89,9 +82,8 @@ See: `.planning/phases/phase-{N}-EXPLORE.md`
 - {decision 1}: {rationale}
 - {decision 2}: {rationale}
 
-## Testing Preference
-{TDD or Regular — as chosen by user}
-{If SQL-heavy phase: "Validation queries replace unit tests for SQL tasks"}
+## Testing / Validation Notes
+{Only include if the user specified a preference or the phase clearly needs dedicated checks. Leave empty otherwise.}
 
 ## Constraints
 - {constraint from discussion}

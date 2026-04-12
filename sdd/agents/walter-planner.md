@@ -53,23 +53,12 @@ First, check whether `docs/plans/TEMPLATE.md` exists and use it as the base temp
 - [ ] <Atomic step: single concrete action>
 - [ ] <Atomic step: single concrete action>
 - [WAIT] <Step requiring human action outside the container>
-- [ ] Write tests — success cases for new/modified functionality
-- [ ] Write tests — error and edge cases
-- [ ] Run tests — all pass before proceeding to next task
 
 ### Task 2: <Title>
 - [ ] <Atomic step>
 - [ ] <Atomic step>
-- [ ] Write tests — success cases for new/modified functionality
-- [ ] Write tests — error and edge cases
-- [ ] Run tests — all pass before proceeding to next task
 
-**Required task structure**: Every task MUST end with the three test checklist items above. No exceptions. If the task's CONTEXT.md specifies TDD, move the test items BEFORE the implementation items.
-
-**SQL tasks exception**: When a task involves writing SQL (queries, views, stored procedures, pipeline logic, transformations), unit tests are NOT applicable. Instead, replace the test items with:
-- [ ] Write validation queries — row count checks, sample data spot-checks, boundary/edge case queries (nulls, duplicates, date ranges), comparison against known-good source where applicable
-- [ ] Run validation queries — results match expectations
-- [ ] Save validation queries to `.planning/phases/phase-{N}-task-{M}-validation.sql`
+**Tests and validation**: Include test or validation steps only when the task's CONTEXT.md explicitly asks for them, or when existing project conventions require it. Do not add tests by default.
 
 ## Post-Completion
 
@@ -99,7 +88,7 @@ Items requiring external action after all tasks are done. These are NOT automate
 
 - **YAGNI**: Remove unnecessary scope ruthlessly. If it's not needed for this phase, cut it. Don't plan for hypothetical future requirements.
 - **Explicit duplication trade-offs**: When code duplication appears in the plan, note it explicitly with trade-offs (DRY vs simplicity vs coupling) rather than silently deciding to abstract.
-- **Read CONTEXT.md**: Before writing any plan, read `.planning/phases/phase-{N}-CONTEXT.md` for TDD/Regular testing preference and apply it throughout all tasks. TDD means test checklist items come BEFORE implementation items in each task. Regular means they come after.
+- **Read CONTEXT.md**: Before writing any plan, read `.planning/phases/phase-{N}-CONTEXT.md` for any testing or validation preferences captured during discussion and apply them as stated. If CONTEXT.md says nothing about tests, do not add test steps by default.
 - **Task isolation (critical for `walter --plan`)**: Each `### Task N:` is executed in a **separate `claude -p` session** with no memory of previous tasks. The only context each session receives is:
   1. Plan preamble — everything before the first `### Task` header (capped at 200 lines)
   2. The current task's section text (from `### Task N:` to the next header)
@@ -121,10 +110,9 @@ Items requiring external action after all tasks are done. These are NOT automate
 6. Include file paths wherever files are touched.
 7. Validation commands must be runnable.
 8. Done criteria must be measurable.
-9. **Every task MUST end with test checklist items** (see Task Structure below).
-10. **NO checkboxes in Post-Completion section** — only prose items requiring external action.
-11. **Tasks must be self-contained** — each task runs in an isolated `claude -p` session with no shared state. Reference file paths explicitly. Never assume context from prior tasks.
-12. **No orphan checkboxes** — every `- [ ]` item must live under a `### Task N:` header. Checkboxes under `##` headers (H2) are invisible to the executor and will be silently skipped.
+9. **NO checkboxes in Post-Completion section** — only prose items requiring external action.
+10. **Tasks must be self-contained** — each task runs in an isolated `claude -p` session with no shared state. Reference file paths explicitly. Never assume context from prior tasks.
+11. **No orphan checkboxes** — every `- [ ]` item must live under a `### Task N:` header. Checkboxes under `##` headers (H2) are invisible to the executor and will be silently skipped.
 
 ## After Writing the Plan
 

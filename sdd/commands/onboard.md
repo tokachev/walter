@@ -28,7 +28,7 @@ Explain each transition:
 - **INIT**: Project initialized with brief, requirements, roadmap
 - **DISCUSSING**: User decisions captured for current phase
 - **PLANNED**: Execution plans created via dual-model synthesis (Claude + Codex)
-- **EXECUTING**: Plans executed wave-by-wave with test enforcement
+- **EXECUTING**: Plans executed wave-by-wave by plan-executor agents
 - **VERIFYING**: 3D QA validation (Completeness, Correctness, Coherence) + user acceptance
 - **PHASE_COMPLETE**: Phase accepted, ready for next phase
 - **ARCHIVED**: Phase or project archived with full audit trail
@@ -89,7 +89,7 @@ Based on the user's interest (ask if unclear), highlight:
 
 ### For Developers
 - **elegance-reviewer**: Challenges planned approach before execution — "Is there a simpler way?"
-- **plan-executor**: Follows plans precisely, no improvisation. Tests mandatory after every task
+- **plan-executor**: Follows plans precisely, no improvisation. Runs whatever tests or validation the plan specifies
 - **sdd-debugger**: Diagnoses failures, creates minimal fix plans (max 3 tasks)
 
 ### For Leads / PMs

@@ -64,7 +64,7 @@ For each phase N in `ROADMAP.md`:
 Agent(
   subagent_type="Explore",
   run_in_background=true,
-  prompt="Analyze the codebase areas relevant to Phase {N}: {phase description}. Investigate: existing patterns and conventions, files that will be affected, dependencies between components, test coverage. If this phase is SQL-heavy, note that validation queries replace unit tests. Be specific with file paths and line numbers. Write findings to .planning/phases/phase-{N}-EXPLORE.md."
+  prompt="Analyze the codebase areas relevant to Phase {N}: {phase description}. Investigate: existing patterns and conventions, files that will be affected, dependencies between components, and any existing test or validation patterns worth matching. Be specific with file paths and line numbers. Write findings to .planning/phases/phase-{N}-EXPLORE.md."
 )
 ```
 
@@ -180,9 +180,9 @@ After ALL phases are planned:
 ## Phase 1: {Phase Name}
 
 {Include full plan content from phase-1-PLAN.md with tasks numbered sequentially.
- Embed phase validation commands as `- [ ]` steps in the LAST task of the phase
- (e.g., "Run `pytest tests/ -x -q` — all tests must pass").
- Do NOT create separate `### Phase N Validation` sections — the executor ignores them.}
+ If the phase plan defines validation steps, embed them as `- [ ]` items in the LAST task of the phase.
+ Do NOT create separate `### Phase N Validation` sections — the executor ignores them.
+ Do NOT invent test steps that the phase plan did not ask for.}
 
 ---
 
@@ -195,15 +195,15 @@ After ALL phases are planned:
 {... repeat for all phases}
 
 ### Task {LAST}: Final validation
-- [ ] Run full test suite: `pytest tests/ -v` — all tests pass
 - [ ] Verify all requirements from the Requirements section above are implemented
 - [ ] Verify no regressions: check that pre-existing functionality still works
+- [ ] Run any project-specific validation commands that apply (linters, smoke checks, etc.) — only if the project already uses them
 - [ ] If requirements changed during implementation, append delta specs to `.planning/REQUIREMENTS-CHANGELOG.md`
 
 ## Validation Commands
 ```bash
-# Commands the executor runs after every task (keep minimal — per-phase checks go inside tasks)
-pytest tests/ -x -q
+# Commands the executor runs after every task. Keep this minimal and only include commands that actually exist in this project.
+# Leave empty if the project has no standard validation pipeline.
 ```
 ```
 
