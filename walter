@@ -186,6 +186,8 @@ ENV_VARS=(
   # These services are blocked by the firewall; without this flag Claude Code
   # attempts connections that hang until TCP timeout, adding minutes of latency.
   -e "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+  # Fixed thinking budget instead of adaptive (more stable for complex tasks)
+  -e "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1"
   # Default to Opus
   -e "ANTHROPIC_MODEL=claude-opus-4-6[1m]"
   # 24-bit color support inside container
