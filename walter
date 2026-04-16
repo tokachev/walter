@@ -188,8 +188,10 @@ ENV_VARS=(
   -e "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
   # Fixed thinking budget instead of adaptive (more stable for complex tasks)
   -e "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1"
+  # Enable 1M context window
+  -e "CLAUDE_CODE_DISABLE_1M_CONTEXT=false"
   # Default to Opus
-  -e "ANTHROPIC_MODEL=claude-opus-4-6[1m]"
+  -e "ANTHROPIC_MODEL=claude-opus-4-7[1m]"
   # 24-bit color support inside container
   -e "COLORTERM=${COLORTERM:-truecolor}"
 )

@@ -84,9 +84,7 @@ RUN chmod +x /opt/lib/*.sh
 COPY network-lock.sh /usr/local/bin/network-lock
 RUN chmod +x /usr/local/bin/network-lock
 
-RUN git config --global user.name "walter" \
-    && git config --global user.email "walter@local" \
-    && git config --global init.defaultBranch main
+RUN git config --global init.defaultBranch main
 
 # Give non-root user ownership of its home directory
 RUN chown -R node:node /opt/claude-home

@@ -3,6 +3,10 @@
     "type": "command",
     "command": "bash /opt/hooks/statusline-command.sh"
   },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "spinnerVerbs": {
     "mode": "replace",
     "verbs": [
