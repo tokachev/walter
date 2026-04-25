@@ -54,6 +54,7 @@ bash -n review/review-executor.sh
 3. **Claude Code** runs inside the container with:
    - **PreToolUse hooks** (`hooks/settings.json` → installed to `$HOME/.claude/settings.json`):
      - `hooks/credential-guard.py` (matchers: Write, Edit, Bash) — scans content for 40+ secret patterns in a single Python process
+     - `hooks/bq-write-guard.py` (matcher: Bash) — for `python3 <file.py>` invocations, scans the script for BigQuery write APIs (`delete_*`, `update_*`, write SQL via `.query()`, REST writes) and blocks. Defense-in-depth only; primary protection is least-privilege IAM on host ADC.
 
 ### MCP servers
 

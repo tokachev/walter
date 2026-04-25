@@ -76,6 +76,11 @@
             "type": "command",
             "command": "/opt/hooks/credential-guard.py bash",
             "statusMessage": "Scanning for credentials..."
+          },
+          {
+            "type": "command",
+            "command": "/opt/hooks/bq-write-guard.py",
+            "statusMessage": "Scanning for BigQuery writes..."
           }
         ]
       }
