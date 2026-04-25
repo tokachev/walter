@@ -41,7 +41,7 @@ RUN python3 -c "import chromadb; c=chromadb.Client(); col=c.create_collection('w
 
 # Native hooks: credential-guard scanner + hook script
 COPY hooks/ /opt/hooks/
-RUN chmod +x /opt/hooks/credential-guard.py /opt/hooks/statusline-command.sh
+RUN chmod +x /opt/hooks/credential-guard.py /opt/hooks/bq-write-guard.py /opt/hooks/statusline-command.sh
 
 # Plan executor: sequential task runner for markdown plans
 COPY plan-executor.sh /opt/plan-executor.sh
